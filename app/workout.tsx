@@ -1,11 +1,12 @@
 import React, { useMemo, useState } from 'react';
-import { Alert, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { Alert, Platform, Pressable, StyleSheet, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useGymCrushStore } from '../src/store/useGymCrushStore';
 import { plural, useCopy } from '../src/i18n/useCopy';
 import { gutter, radius, space, useTheme } from '../src/theme/theme';
 import { AppText, Avatar, Button, EmptyState, Icon, IconButton, SegmentedControl } from '../src/ui/primitives';
+import { KeyboardAwareScrollView } from '../src/ui/keyboard';
 import { formatTime } from '../src/components/RestTimerBar';
 import { ExerciseCard } from '../src/features/workout/ExerciseCard';
 import { RestPanel } from '../src/features/workout/RestPanel';
@@ -106,33 +107,28 @@ export default function WorkoutScreen() {
       ) : (
         <>
           <PartnerStrip onOpenPartner={() => setActiveTab('partner')} />
-          {/* iOS: ScrollView insets itself; Android edge-to-edge: adjustResize may not apply, so shrink via KAV "height". */}
-          <KeyboardAvoidingView style={{ flex: 1 }} enabled={Platform.OS === 'android'} behavior="height">
-            <ScrollView
-              automaticallyAdjustKeyboardInsets
-              keyboardShouldPersistTaps="handled"
-              keyboardDismissMode="interactive"
-              contentContainerStyle={{ paddingHorizontal: gutter, gap: space.lg, paddingBottom: Math.max(insets.bottom, space.md) + restHeight + space.xxl }}
-            >
-              <AlarmRow />
+          <KeyboardAwareScrollView
+            style={{ flex: 1 }}
+            contentContainerStyle={{ paddingHorizontal: gutter, gap: space.lg, paddingBottom: Math.max(insets.bottom, space.md) + restHeight + space.xxl }}
+          >
+            <AlarmRow />
 
-              {sessionMachines.length === 0 ? (
-                <EmptyState
-                  icon={{ ios: 'dumbbell', android: 'fitness_center' }}
-                  title={c('No exercises yet', '還沒有動作')}
-                  body={c('Add a machine to start logging sets.', '新增器材開始記錄組數。')}
-                  action={{ title: c('Add exercise', '新增動作'), onPress: () => router.push('/add-exercise') }}
-                />
-              ) : (
-                <>
-                  {sessionMachines.map((m) => (
-                    <ExerciseCard key={m.id} machine={m} sessionSets={sessionSets} workoutId={workoutId} focused={m.id === focusedId} />
-                  ))}
-                  <Button title={c('Add exercise', '新增動作')} icon={{ ios: 'plus', android: 'add' }} variant="tinted" tint={user} onPress={() => router.push('/add-exercise')} />
-                </>
-              )}
-            </ScrollView>
-          </KeyboardAvoidingView>
+            {sessionMachines.length === 0 ? (
+              <EmptyState
+                icon={{ ios: 'dumbbell', android: 'fitness_center' }}
+                title={c('No exercises yet', '還沒有動作')}
+                body={c('Add a machine to start logging sets.', '新增器材開始記錄組數。')}
+                action={{ title: c('Add exercise', '新增動作'), onPress: () => router.push('/add-exercise') }}
+              />
+            ) : (
+              <>
+                {sessionMachines.map((m) => (
+                  <ExerciseCard key={m.id} machine={m} sessionSets={sessionSets} workoutId={workoutId} focused={m.id === focusedId} />
+                ))}
+                <Button title={c('Add exercise', '新增動作')} icon={{ ios: 'plus', android: 'add' }} variant="tinted" tint={user} onPress={() => router.push('/add-exercise')} />
+              </>
+            )}
+          </KeyboardAwareScrollView>
           <RestPanel onHeight={setRestHeight} />
         </>
       )}

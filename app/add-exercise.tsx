@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, useWindowDimensions, View } from 'react-native';
+import { Pressable, StyleSheet, useWindowDimensions, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useGymCrushStore } from '../src/store/useGymCrushStore';
@@ -7,6 +7,7 @@ import { MUSCLE_LABELS } from '../src/i18n/translations';
 import { useCopy } from '../src/i18n/useCopy';
 import { gutter, radius, space, useTheme } from '../src/theme/theme';
 import { AppText, Button, Chip, EmptyState, Icon, SheetHeader, TextField } from '../src/ui/primitives';
+import { KeyboardAwareScrollView } from '../src/ui/keyboard';
 import { MachineImage } from '../src/components/MachineImage';
 import { MuscleGroup } from '../src/types/gym';
 import { machineName } from '../src/features/workout/workoutHelpers';
@@ -79,7 +80,7 @@ export default function AddExerciseSheet() {
           {MUSCLES.map((g) => <Chip key={g} label={MUSCLE_LABELS[lang][g]} selected={muscle === g} onPress={() => setMuscle(g)} />)}
         </View>
       </View>
-      <ScrollView style={{ backgroundColor: colors.bg }} keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag" contentContainerStyle={{ paddingBottom: Math.max(insets.bottom, space.lg) + space.lg }}>
+      <KeyboardAwareScrollView style={{ backgroundColor: colors.bg }} keyboardDismissMode="on-drag" contentContainerStyle={{ paddingBottom: Math.max(insets.bottom, space.lg) + space.lg }}>
         {machines.length === 0 ? (
           <EmptyState
             icon={{ ios: 'magnifyingglass', android: 'search' }}
@@ -92,7 +93,7 @@ export default function AddExerciseSheet() {
         {machines.length > 0 && (
           <Button title={c('New machine', '新增器材')} variant="plain" icon={{ ios: 'plus', android: 'add' }} onPress={() => router.push('/new-machine')} style={{ marginTop: space.lg, alignSelf: 'center' }} />
         )}
-      </ScrollView>
+      </KeyboardAwareScrollView>
     </>
   );
 }

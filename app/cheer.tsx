@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { KeyboardAvoidingView, Platform, Pressable, StyleSheet, View } from 'react-native';
+import { Pressable, StyleSheet, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useGymCrushStore } from '../src/store/useGymCrushStore';
@@ -7,6 +7,7 @@ import { t } from '../src/i18n/translations';
 import { useCopy } from '../src/i18n/useCopy';
 import { gutter, radius, space, touch, useTheme } from '../src/theme/theme';
 import { AppText, Button, haptics, SheetHeader, TextField } from '../src/ui/primitives';
+import { KeyboardAwareScrollView } from '../src/ui/keyboard';
 import { HypeEmoji } from '../src/types/gym';
 import { otherPartner } from '../src/features/workout/workoutHelpers';
 
@@ -41,10 +42,13 @@ export default function CheerSheet() {
     router.back();
   };
 
+  // react-native-screens form sheets lay out exactly [header (collapsable={false}), ScrollView].
   return (
-    <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ backgroundColor: colors.bg }}>
-      <SheetHeader title={c(`Cheer ${to}`, `為 ${to} 加油`)} onClose={() => router.back()} closeLabel={c('Close', '關閉')} />
-      <View style={[styles.body, { paddingBottom: Math.max(insets.bottom, space.lg) }]}>
+    <>
+      <View collapsable={false} style={{ backgroundColor: colors.bg }}>
+        <SheetHeader title={c(`Cheer ${to}`, `為 ${to} 加油`)} onClose={() => router.back()} closeLabel={c('Close', '關閉')} />
+      </View>
+      <KeyboardAwareScrollView style={{ backgroundColor: colors.bg }} contentContainerStyle={[styles.body, { paddingBottom: Math.max(insets.bottom, space.lg) + space.lg }]}>
         <View style={styles.grid} accessibilityRole="radiogroup">
           {options.map((o) => {
             const on = o.emoji === selected;
@@ -65,8 +69,8 @@ export default function CheerSheet() {
         </View>
         <TextField label={c('Message (optional)', '訊息（選填）')} value={message} onChangeText={setMessage} placeholder={label} maxLength={200} returnKeyType="send" onSubmitEditing={send} />
         <Button title={c('Send', '送出')} icon={{ ios: 'paperplane.fill', android: 'send' }} size="large" tint={colors.partners[me]} haptic={false} onPress={send} />
-      </View>
-    </KeyboardAvoidingView>
+      </KeyboardAwareScrollView>
+    </>
   );
 }
 

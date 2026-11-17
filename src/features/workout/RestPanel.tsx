@@ -6,6 +6,7 @@ import { useGymCrushStore } from '../../store/useGymCrushStore';
 import { useCopy } from '../../i18n/useCopy';
 import { gutter, radius, space, useTheme } from '../../theme/theme';
 import { AppText, Avatar, Button } from '../../ui/primitives';
+import { useKeyboardState } from '../../ui/keyboard';
 import { DuoRings } from '../../ui/DuoRings';
 import { calculatePlatesPerSide, formatTime, PlateCount, restProgress } from '../../components/RestTimerBar';
 import { otherPartner } from './workoutHelpers';
@@ -21,6 +22,7 @@ export function RestPanel({ onHeight }: { onHeight: (h: number) => void }) {
   const insets = useSafeAreaInsets();
   const [platesOpen, setPlatesOpen] = useState(false);
   const enter = useRef(new Animated.Value(0)).current;
+  const { keyboardVisible } = useKeyboardState();
   const resting = store.restSeconds > 0;
 
   useEffect(() => {
@@ -32,7 +34,7 @@ export function RestPanel({ onHeight }: { onHeight: (h: number) => void }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [resting]);
 
-  if (!resting) return null;
+  if (!resting || keyboardVisible) return null;
 
   const me = store.activeUser;
   const partner = otherPartner(me);

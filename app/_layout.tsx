@@ -43,8 +43,8 @@ export default function RootLayout() {
               <Stack.Screen name="routine" options={{ presentation: Platform.OS === 'ios' ? 'modal' : 'card', animation: Platform.OS === 'ios' ? 'default' : 'slide_from_bottom' }} />
               <Stack.Screen name="add-exercise" options={sheetOptions([0.7, 1])} />
               <Stack.Screen name="machine-settings/[id]" options={sheetOptions([0.7, 1])} />
-              <Stack.Screen name="edit-set/[id]" options={sheetOptions('fitToContents')} />
-              <Stack.Screen name="cheer" options={sheetOptions('fitToContents')} />
+              <Stack.Screen name="edit-set/[id]" options={sheetOptions([0.7, 1])} />
+              <Stack.Screen name="cheer" options={sheetOptions([0.7, 1])} />
               </Stack.Protected>
             </Stack>
             <ReactionBanner />

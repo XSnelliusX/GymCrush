@@ -3,6 +3,7 @@ import { AccessibilityInfo, Animated, Easing, KeyboardAvoidingView, Platform, Sc
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppText, Button, Card, Icon, SegmentedControl } from '../src/ui/primitives';
+import { KeyboardAwareScrollView } from '../src/ui/keyboard';
 import { DuoRings } from '../src/ui/DuoRings';
 import { gutter, radius, space, useTheme } from '../src/theme/theme';
 import { useCopy } from '../src/i18n/useCopy';
@@ -74,7 +75,7 @@ export default function OnboardingScreen() {
           onChange={store.setLanguage}
         />
       </View>
-      <ScrollView ref={scroll} keyboardShouldPersistTaps="handled" keyboardDismissMode="interactive" contentContainerStyle={{ flexGrow: 1, padding: gutter, gap: space.xxl, justifyContent: step === 0 ? 'center' : 'flex-start' }}>
+      <KeyboardAwareScrollView scrollRef={scroll} contentContainerStyle={{ flexGrow: 1, padding: gutter, gap: space.xxl, justifyContent: step === 0 ? 'center' : 'flex-start' }}>
         {step === 0 && (
           <View style={{ alignItems: 'center', gap: space.xl }}>
             <WelcomeRings />
@@ -106,7 +107,7 @@ export default function OnboardingScreen() {
             </View>
           </>
         )}
-      </ScrollView>
+      </KeyboardAwareScrollView>
       <View style={{ paddingHorizontal: gutter, paddingBottom: insets.bottom + space.md, paddingTop: space.md, gap: space.lg }}>
         <View accessible accessibilityLabel={c(`Step ${step + 1} of 3`, `第 ${step + 1} 步，共 3 步`)} style={{ flexDirection: 'row', justifyContent: 'center', gap: space.sm }}>
           {[0, 1, 2].map((i) => (

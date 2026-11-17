@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { KeyboardAvoidingView, Platform, Pressable, ScrollView, View } from 'react-native';
+import { Platform, Pressable, ScrollView, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MachineImage } from '../src/components/MachineImage';
@@ -11,6 +11,7 @@ import { useGymCrushStore } from '../src/store/useGymCrushStore';
 import { gutter, radius, space, useTheme } from '../src/theme/theme';
 import { MuscleGroup, PartnerId } from '../src/types/gym';
 import { AppText, Avatar, Button, Card, Chip, Icon, IconButton, TextField } from '../src/ui/primitives';
+import { KeyboardAwareScrollView } from '../src/ui/keyboard';
 
 type Row = { id: string; label: string; markusValue: string; partnerValue: string };
 const PARTNERS: PartnerId[] = ['markus', 'partner'];
@@ -94,7 +95,7 @@ export default function NewMachineScreen() {
   const tint = colors.partners[activeUser];
 
   return (
-    <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1, backgroundColor: colors.bg }}>
+    <View style={{ flex: 1, backgroundColor: colors.bg }}>
       {/* iOS page sheets sit below the status bar already; Android full screen needs the inset. */}
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.sm, paddingHorizontal: space.sm, paddingTop: (Platform.OS === 'android' ? insets.top : 0) + space.sm, paddingBottom: space.sm }}>
         <Button title={c('Cancel', '取消')} variant="plain" size="small" onPress={() => router.back()} haptic={false} />
@@ -102,9 +103,7 @@ export default function NewMachineScreen() {
         <Button title={c('Save', '儲存')} size="small" tint={tint} disabled={!hasName || photoBusy} onPress={save} style={{ marginRight: space.sm }} />
       </View>
 
-      <ScrollView
-        keyboardShouldPersistTaps="handled"
-        keyboardDismissMode="interactive"
+      <KeyboardAwareScrollView
         contentContainerStyle={{ paddingHorizontal: gutter, paddingBottom: insets.bottom + space.xxxl, gap: space.xl }}
       >
         {/* Photo */}
@@ -215,7 +214,7 @@ export default function NewMachineScreen() {
             <AppText variant="footnote" tone="secondary" style={{ textAlign: 'center' }}>{c('Up to 5 settings per machine.', '每台器材最多 5 項設定。')}</AppText>
           )}
         </View>
-      </ScrollView>
-    </KeyboardAvoidingView>
+      </KeyboardAwareScrollView>
+    </View>
   );
 }

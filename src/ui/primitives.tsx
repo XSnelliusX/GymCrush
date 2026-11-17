@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useRef } from 'react';
 import {
   AccessibilityRole,
   ActivityIndicator,
@@ -18,6 +18,7 @@ import { SymbolView, SymbolViewProps } from 'expo-symbols';
 import * as Haptics from 'expo-haptics';
 import { PartnerId } from '../types/gym';
 import { gutter, radius, space, touch, TypeVariant, useTheme } from '../theme/theme';
+import { KeyboardAwareScrollView, useKeyboardFocus } from './keyboard';
 
 // ---------- Haptics ----------
 export const haptics = {
@@ -302,10 +303,12 @@ export function SheetHeader({ title, onClose, closeLabel, action }: {
 
 // ---------- Text field ----------
 /** Labeled input well. Label is visible (not placeholder-only); `error` is announced and shown under the field. */
-export function TextField({ label, error, style, ...rest }: TextInputProps & { label: string; error?: string }) {
+export function TextField({ label, error, style, onFocus, ...rest }: TextInputProps & { label: string; error?: string }) {
   const { colors, type } = useTheme();
+  const containerRef = useRef<React.ComponentRef<typeof View> | null>(null);
+  const keyboardFocus = useKeyboardFocus();
   return (
-    <View style={[{ gap: space.xs }, style]}>
+    <View ref={containerRef} collapsable={false} style={[{ gap: space.xs }, style]}>
       <AppText variant="footnote" tone="secondary" style={{ fontWeight: '600', paddingHorizontal: space.xs }}>{label}</AppText>
       <TextInput
         accessibilityLabel={label}
@@ -313,6 +316,10 @@ export function TextField({ label, error, style, ...rest }: TextInputProps & { l
         selectionColor={colors.text}
         maxFontSizeMultiplier={2}
         {...rest}
+        onFocus={(e) => {
+          keyboardFocus?.scrollToInput(containerRef.current, 64);
+          onFocus?.(e);
+        }}
         style={[type.body, { color: colors.text, backgroundColor: colors.fill, borderRadius: radius.md, minHeight: touch.min + 4, paddingHorizontal: space.lg, paddingVertical: space.sm }, error ? { borderWidth: 1.5, borderColor: colors.danger } : null]}
       />
       {error ? <AppText variant="footnote" color={colors.danger} accessibilityLiveRegion="polite" style={{ paddingHorizontal: space.xs }}>{error}</AppText> : null}
@@ -325,16 +332,14 @@ export function TextField({ label, error, style, ...rest }: TextInputProps & { l
 export function ScreenScroll({ padded = true, contentContainerStyle, children, ...rest }: React.ComponentProps<typeof ScrollView> & { padded?: boolean }) {
   const { colors } = useTheme();
   return (
-    <ScrollView
+    <KeyboardAwareScrollView
       contentInsetAdjustmentBehavior="automatic"
-      keyboardShouldPersistTaps="handled"
-      keyboardDismissMode="interactive"
       style={{ flex: 1, backgroundColor: colors.bg }}
       contentContainerStyle={[padded && { paddingHorizontal: gutter }, { paddingTop: space.sm, paddingBottom: Platform.OS === 'android' ? 190 : 120 }, contentContainerStyle]}
       {...rest}
     >
       {children}
-    </ScrollView>
+    </KeyboardAwareScrollView>
   );
 }
 

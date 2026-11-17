@@ -1,7 +1,8 @@
-import React from 'react';
+import React, { useRef } from 'react';
 import { InputAccessoryView, Keyboard, Platform, StyleSheet, TextInput, View } from 'react-native';
 import { radius, space, touch, useTheme } from '../../theme/theme';
 import { AppText, Button, IconButton } from '../../ui/primitives';
+import { useKeyboardFocus } from '../../ui/keyboard';
 import { useCopy } from '../../i18n/useCopy';
 
 export const KEYBOARD_ACCESSORY_ID = 'workout-number-done';
@@ -27,19 +28,22 @@ export function Stepper({ label, unitLabel, text, onChangeText, step, min, decim
 }) {
   const { colors, type } = useTheme();
   const c = useCopy();
+  const wrapRef = useRef<React.ComponentRef<typeof View> | null>(null);
+  const keyboardFocus = useKeyboardFocus();
   const value = Number(text.replace(',', '.'));
   const bump = (d: number) => {
     const base = Number.isFinite(value) ? value : min;
     onChangeText(String(Number(Math.max(min, base + d).toFixed(2))));
   };
   return (
-    <View style={styles.wrap}>
+    <View ref={wrapRef} collapsable={false} style={styles.wrap}>
       <View style={styles.row}>
         <IconButton icon={{ ios: 'minus', android: 'remove' }} label={c(`Decrease ${label}`, `減少${label}`)} onPress={() => bump(-step)} variant="tinted" size={touch.large} iconSize={22} />
         <TextInput
           accessibilityLabel={`${label}, ${unitLabel}`}
           value={text}
           onChangeText={onChangeText}
+          onFocus={() => keyboardFocus?.scrollToInput(wrapRef.current, 96)}
           keyboardType={decimal ? 'decimal-pad' : 'number-pad'}
           selectTextOnFocus
           returnKeyType="done"

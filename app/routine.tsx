@@ -1,8 +1,9 @@
 import React, { useState } from 'react';
-import { Alert, Platform, Pressable, ScrollView, View } from 'react-native';
+import { Alert, Platform, Pressable, View } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppText, Button, Icon, TextField, haptics } from '../src/ui/primitives';
+import { KeyboardAwareScrollView } from '../src/ui/keyboard';
 import { MachineImage } from '../src/components/MachineImage';
 import { gutter, radius, space, touch, useTheme } from '../src/theme/theme';
 import { useCopy } from '../src/i18n/useCopy';
@@ -44,7 +45,7 @@ export default function RoutineScreen() {
         <AppText variant="headline" accessibilityRole="header" style={{ flex: 1, textAlign: 'center' }}>{isNew ? c('New routine', '新增課表') : c('Edit routine', '編輯課表')}</AppText>
         <Button title={c('Save', '儲存')} size="small" tint={tint} disabled={!name.trim()} onPress={save} />
       </View>
-      <ScrollView keyboardShouldPersistTaps="handled" keyboardDismissMode="interactive" contentContainerStyle={{ padding: gutter, gap: space.xl, paddingBottom: insets.bottom + space.xxxl }}>
+      <KeyboardAwareScrollView contentContainerStyle={{ padding: gutter, gap: space.xl, paddingBottom: insets.bottom + space.xxxl }}>
         <TextField label={c('Routine name', '課表名稱')} placeholder={c('e.g. Upper body', '例如：上肢')} value={name} onChangeText={(v) => { setName(v); }} onBlur={() => setTouched(true)} maxLength={40} error={nameError} />
         <View style={{ gap: space.sm }}>
           <AppText variant="footnote" tone="secondary" style={{ fontWeight: '600', paddingHorizontal: space.xs }}>
@@ -79,7 +80,7 @@ export default function RoutineScreen() {
           )}
         </View>
         {!isNew && <Button title={c('Delete routine', '刪除課表')} variant="destructive" onPress={remove} />}
-      </ScrollView>
+      </KeyboardAwareScrollView>
     </View>
   );
 }

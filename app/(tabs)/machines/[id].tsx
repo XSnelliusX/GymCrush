@@ -2,14 +2,14 @@ import React, { useState } from 'react';
 import { ActionSheetIOS, Alert, Platform, View } from 'react-native';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { MachineImage } from '../../../src/components/MachineImage';
-import { machineLocation, machineName, pickMachinePhoto, resolveAdjustments } from '../../../src/features/machines/machineUtils';
+import { machineLocation, machineName, MUSCLE_GROUPS, pickMachinePhoto, resolveAdjustments } from '../../../src/features/machines/machineUtils';
 import { MUSCLE_LABELS } from '../../../src/i18n/translations';
 import { useCopy } from '../../../src/i18n/useCopy';
 import { useGymCrushStore } from '../../../src/store/useGymCrushStore';
 import { radius, space, useTheme } from '../../../src/theme/theme';
-import { PartnerId } from '../../../src/types/gym';
+import { MuscleGroup, PartnerId } from '../../../src/types/gym';
 import {
-  AppText, Button, Card, Icon, IconButton, ListRow, ListSection, ScreenScroll, SegmentedControl, TextField, haptics,
+  AppText, Button, Card, Chip, Icon, IconButton, ListRow, ListSection, ScreenScroll, SegmentedControl, TextField, haptics,
 } from '../../../src/ui/primitives';
 
 const PARTNERS: PartnerId[] = ['markus', 'partner'];
@@ -23,7 +23,7 @@ export default function MachineDetailScreen() {
   const { language, profiles, activeUser } = store;
   const machine = store.machines.find((m) => m.id === id);
   const [partner, setPartner] = useState<PartnerId>(activeUser);
-  const [renaming, setRenaming] = useState<{ name: string; nameZh: string } | null>(null);
+  const [editing, setEditing] = useState<{ name: string; nameZh: string; muscleGroup: MuscleGroup; locationNote: string } | null>(null);
   const [busy, setBusy] = useState(false);
 
   // Deleted (here or by the partner's device): render nothing while we pop back.
@@ -56,32 +56,42 @@ export default function MachineDetailScreen() {
     );
   };
 
-  const startRename = () => setRenaming({ name: machine.name, nameZh: machine.nameZh || '' });
+  const startEdit = () => setEditing({
+    name: machine.name,
+    nameZh: machine.nameZh || '',
+    muscleGroup: machine.muscleGroup,
+    locationNote: machineLocation(machine, language),
+  });
 
   const openMenu = () => {
-    const rename = c('Rename', '重新命名');
+    const edit = c('Edit exercise', '編輯動作');
     const photo = c('Change photo', '更換照片');
     const del = c('Delete machine', '刪除器材');
     if (Platform.OS === 'ios') {
       ActionSheetIOS.showActionSheetWithOptions(
-        { options: [c('Cancel', '取消'), rename, photo, del], cancelButtonIndex: 0, destructiveButtonIndex: 3, title: name },
-        (i) => { if (i === 1) startRename(); if (i === 2) void changePhoto(); if (i === 3) confirmDelete(); },
+        { options: [c('Cancel', '取消'), edit, photo, del], cancelButtonIndex: 0, destructiveButtonIndex: 3, title: name },
+        (i) => { if (i === 1) startEdit(); if (i === 2) void changePhoto(); if (i === 3) confirmDelete(); },
       );
     } else {
       // Android alerts hold at most 3 buttons; tapping outside cancels.
       Alert.alert(name, undefined, [
         { text: del, style: 'destructive', onPress: confirmDelete },
         { text: photo, onPress: () => void changePhoto() },
-        { text: rename, onPress: startRename },
+        { text: edit, onPress: startEdit },
       ], { cancelable: true });
     }
   };
 
-  const renameError = renaming && !renaming.name.trim() && !renaming.nameZh.trim() ? c('Enter a name', '請輸入名稱') : undefined;
-  const saveRename = () => {
-    if (!renaming || renameError) return;
-    store.updateMachineNames(machine.id, renaming.name, renaming.nameZh);
-    setRenaming(null);
+  const editError = editing && !editing.name.trim() && !editing.nameZh.trim() ? c('Enter a name', '請輸入名稱') : undefined;
+  const saveEdit = () => {
+    if (!editing || editError) return;
+    store.updateMachine(machine.id, {
+      name: editing.name,
+      nameZh: editing.nameZh,
+      muscleGroup: editing.muscleGroup,
+      ...(language === 'zh-TW' && machine.locationNoteZh ? { locationNoteZh: editing.locationNote } : { locationNote: editing.locationNote }),
+    });
+    setEditing(null);
   };
 
   const primary = () => {
@@ -113,20 +123,34 @@ export default function MachineDetailScreen() {
           {busy && <AppText variant="footnote" tone="secondary" style={{ marginTop: space.xs }}>{c('Saving photo…', '正在儲存照片…')}</AppText>}
         </View>
 
-        {renaming ? (
+        {editing ? (
           <Card style={{ marginTop: space.lg, gap: space.md }}>
-            <TextField label={c('Name', '名稱')} value={renaming.name} onChangeText={(v) => setRenaming({ ...renaming, name: v })} error={renameError} autoFocus returnKeyType="next" />
-            <TextField label={c('Chinese name (optional)', '中文名稱（選填）')} value={renaming.nameZh} onChangeText={(v) => setRenaming({ ...renaming, nameZh: v })} returnKeyType="done" onSubmitEditing={saveRename} />
+            <TextField label={c('Name', '名稱')} value={editing.name} onChangeText={(v) => setEditing({ ...editing, name: v })} error={editError} autoFocus returnKeyType="next" />
+            <TextField label={c('Chinese name (optional)', '中文名稱（選填）')} value={editing.nameZh} onChangeText={(v) => setEditing({ ...editing, nameZh: v })} returnKeyType="next" />
+            <View style={{ gap: space.sm }}>
+              <AppText variant="footnote" tone="secondary" style={{ fontWeight: '600', paddingHorizontal: space.xs }}>{c('Workout type', '訓練部位 / 肌群')}</AppText>
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: space.sm }}>
+                {MUSCLE_GROUPS.map((g) => (
+                  <Chip key={g} label={MUSCLE_LABELS[language][g]} selected={editing.muscleGroup === g} onPress={() => setEditing({ ...editing, muscleGroup: g })} />
+                ))}
+              </View>
+            </View>
+            <TextField label={c('Location (optional)', '位置（選填）')} value={editing.locationNote} onChangeText={(v) => setEditing({ ...editing, locationNote: v })} returnKeyType="done" onSubmitEditing={saveEdit} />
             <View style={{ flexDirection: 'row', justifyContent: 'flex-end', gap: space.sm }}>
-              <Button title={c('Cancel', '取消')} variant="plain" size="small" onPress={() => setRenaming(null)} />
-              <Button title={c('Save', '儲存')} size="small" disabled={!!renameError} tint={colors.partners[activeUser]} onPress={saveRename} />
+              <Button title={c('Cancel', '取消')} variant="plain" size="small" onPress={() => setEditing(null)} />
+              <Button title={c('Save', '儲存')} size="small" disabled={!!editError} tint={colors.partners[activeUser]} onPress={saveEdit} />
             </View>
           </Card>
         ) : null}
 
-        <AppText tone="secondary" style={{ marginTop: space.md, marginBottom: space.xl }}>
-          {[MUSCLE_LABELS[language][machine.muscleGroup], location].filter(Boolean).join(' · ')}
-        </AppText>
+        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: space.md, marginBottom: space.xl, gap: space.sm }}>
+          <AppText tone="secondary" style={{ flex: 1 }}>
+            {[MUSCLE_LABELS[language][machine.muscleGroup], location].filter(Boolean).join(' · ')}
+          </AppText>
+          {!editing && (
+            <Button title={c('Edit', '編輯')} variant="plain" size="small" icon={{ ios: 'pencil', android: 'edit' }} onPress={startEdit} />
+          )}
+        </View>
 
         <SegmentedControl
           accessibilityLabel={c('Whose settings', '誰的設定')}

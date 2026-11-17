@@ -1,12 +1,13 @@
 import React, { useState } from 'react';
-import { Alert, KeyboardAvoidingView, Platform, StyleSheet, View } from 'react-native';
+import { Alert, StyleSheet, View } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useGymCrushStore } from '../../src/store/useGymCrushStore';
 import { useCopy } from '../../src/i18n/useCopy';
 import { gutter, space, useTheme } from '../../src/theme/theme';
 import { AppText, Button, EmptyState, haptics, SheetHeader } from '../../src/ui/primitives';
-import { Stepper } from '../../src/features/workout/Stepper';
+import { KeyboardAwareScrollView } from '../../src/ui/keyboard';
+import { KeyboardDoneBar, Stepper } from '../../src/features/workout/Stepper';
 import { formatWeight, machineName } from '../../src/features/workout/workoutHelpers';
 
 export default function EditSetSheet() {
@@ -24,16 +25,21 @@ export default function EditSetSheet() {
 
   if (!set) {
     return (
-      <View style={{ backgroundColor: colors.bg, paddingBottom: insets.bottom }}>
-        <SheetHeader title={c('Edit set', '編輯組數')} onClose={close} closeLabel={c('Close', '關閉')} />
-        <EmptyState icon={{ ios: 'questionmark.circle', android: 'help' }} title={c('This set was removed', '這組已被刪除')} action={{ title: c('Close', '關閉'), onPress: close }} />
-      </View>
+      <>
+        <View collapsable={false} style={{ backgroundColor: colors.bg }}>
+          <SheetHeader title={c('Edit set', '編輯組數')} onClose={close} closeLabel={c('Close', '關閉')} />
+        </View>
+        <KeyboardAwareScrollView style={{ backgroundColor: colors.bg }}>
+          <EmptyState icon={{ ios: 'questionmark.circle', android: 'help' }} title={c('This set was removed', '這組已被刪除')} action={{ title: c('Close', '關閉'), onPress: close }} />
+        </KeyboardAwareScrollView>
+      </>
     );
   }
 
   const owner = store.profiles[set.userId];
-  // The store only lets the person who logged a set change it.
-  const canEdit = set.userId === store.activeUser;
+  // Active workout sets are editable by the active user; completed workout sets can be edited for either partner.
+  const inCompletedWorkout = store.completedWorkouts.some((w) => w.id === set.workoutId);
+  const canEdit = set.userId === store.activeUser || inCompletedWorkout;
   const tint = colors.partners[set.userId];
 
   const save = () => {
@@ -56,15 +62,19 @@ export default function EditSetSheet() {
     ],
   );
 
+  // react-native-screens form sheets lay out exactly [header (collapsable={false}), ScrollView].
   return (
-    <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ backgroundColor: colors.bg }}>
-      <SheetHeader
-        title={c(`Edit set ${set.setNumber}`, `編輯第 ${set.setNumber} 組`)}
-        onClose={close}
-        closeLabel={c('Close', '關閉')}
-        action={canEdit ? { label: c('Save', '儲存'), onPress: save, tint } : undefined}
-      />
-      <View style={[styles.body, { paddingBottom: Math.max(insets.bottom, space.lg) }]}>
+    <>
+      <View collapsable={false} style={{ backgroundColor: colors.bg }}>
+        <SheetHeader
+          title={c(`Edit set ${set.setNumber}`, `編輯第 ${set.setNumber} 組`)}
+          onClose={close}
+          closeLabel={c('Close', '關閉')}
+          action={canEdit ? { label: c('Save', '儲存'), onPress: save, tint } : undefined}
+        />
+      </View>
+      <KeyboardAwareScrollView style={{ backgroundColor: colors.bg }} contentContainerStyle={[styles.body, { paddingBottom: Math.max(insets.bottom, space.lg) + space.lg }]}>
+        <KeyboardDoneBar />
         <AppText variant="subhead" tone="secondary">
           <AppText variant="subhead" color={tint.color} style={{ fontWeight: '600' }}>{owner.name}</AppText>
           {' · '}{machineName(store.machines.find((m) => m.id === set.machineId), store.language) || set.machineName}
@@ -83,8 +93,8 @@ export default function EditSetSheet() {
             <Button title={c(`Log as ${owner.name}`, `切換為 ${owner.name}`)} variant="tinted" tint={tint} onPress={() => store.switchActiveUser(set.userId)} />
           </>
         )}
-      </View>
-    </KeyboardAvoidingView>
+      </KeyboardAwareScrollView>
+    </>
   );
 }
 
