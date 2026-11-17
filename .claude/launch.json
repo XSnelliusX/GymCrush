@@ -1,0 +1,6 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    { "name": "metro", "runtimeExecutable": "node_modules/.bin/expo", "runtimeArgs": ["start", "--port", "8082"], "env": { "CI": "1" }, "port": 8082 }
+  ]
+}

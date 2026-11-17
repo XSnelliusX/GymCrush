@@ -1,0 +1,46 @@
+{
+  "expo": {
+    "name": "GymCrush",
+    "slug": "gymcrush",
+    "icon": "./assets/icon.png",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "scheme": "gymcrush",
+    "userInterfaceStyle": "automatic",
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "tw.gymcrush.app",
+      "infoPlist": {
+        "NSCameraUsageDescription": "GymCrush uses your camera so you and your partner can snap photos of gym machines for quick selection.",
+        "NSPhotoLibraryUsageDescription": "GymCrush accesses your photos to attach equipment pictures to your shared machine catalog."
+      }
+    },
+    "android": {
+      "package": "tw.gymcrush.app",
+      "permissions": [
+        "CAMERA",
+        "READ_EXTERNAL_STORAGE",
+        "USE_EXACT_ALARM"
+      ],
+      "blockedPermissions": [
+        "android.permission.RECORD_AUDIO"
+      ]
+    },
+    "plugins": [
+      [
+        "expo-image-picker",
+        {
+          "cameraPermission": "Allow GymCrush to take photos of your gym machines.",
+          "microphonePermission": false
+        }
+      ],
+      "expo-router",
+      [
+        "expo-notifications",
+        {
+          "enableRemoteNotifications": false
+        }
+      ]
+    ]
+  }
+}

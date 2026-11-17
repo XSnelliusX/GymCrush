@@ -1,0 +1,5 @@
+# GymCrush app icon
+
+`icon.png` is the opaque 1024 × 1024 production source, configured in `app.json` for iOS and Android. Generated with the built-in image generation tool, then resized for the app icon catalog.
+
+Prompt: Create the final square mobile app icon artwork for GymCrush, a private couples gym workout tracker. Full bleed opaque 1024x1024 square, edge-to-edge deep charcoal #09090B background, no rounded outside corners (OS applies mask), no mockup, no phone, no text, no letters. One distinctive bold centered symbol: a clean emerald #10B981 heart integrated into a strong horizontal dumbbell, expressing partners training together. Sophisticated precision-drawn flat vector-like silhouette with exceptionally crisp geometric edges, generous negative space, visually balanced, recognizable at 48 pixels. Restrained premium fitness brand, simple memorable shape, high contrast. All symbol detail inside central 60 percent of square for Android adaptive icon safe area. No gradients, no glow, no shadows, no border, no tiny details, no generic dev or Expo imagery. Final production icon, only one icon filling the image.
