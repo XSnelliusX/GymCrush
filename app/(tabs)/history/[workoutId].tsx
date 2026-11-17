@@ -19,7 +19,7 @@ const MUSCLES: (MuscleGroup | 'All')[] = ['All', ...MUSCLE_GROUPS];
 const PARTNERS: PartnerId[] = ['markus', 'partner'];
 
 export default function WorkoutDetailScreen() {
-  const { workoutId } = useLocalSearchParams<{ workoutId: string }>();
+  const { workoutId, addExercise, addSet } = useLocalSearchParams<{ workoutId: string; addExercise?: string; addSet?: string }>();
   const store = useGymCrushStore();
   const { colors } = useTheme();
   const c = useCopy();
@@ -29,14 +29,24 @@ export default function WorkoutDetailScreen() {
 
   const [editing, setEditing] = useState(false);
   const [draftTitle, setDraftTitle] = useState('');
-  const [addingExercise, setAddingExercise] = useState(false);
+  const [addingExercise, setAddingExercise] = useState(addExercise === '1');
   const [query, setQuery] = useState('');
   const [muscleFilter, setMuscleFilter] = useState<MuscleGroup | 'All'>('All');
 
-  const [addSetMachineId, setAddSetMachineId] = useState<string | null>(null);
+  const [addSetMachineId, setAddSetMachineId] = useState<string | null>(addSet ?? null);
   const [addSetPartner, setAddSetPartner] = useState<PartnerId>(store.activeUser ?? 'markus');
-  const [addSetWeight, setAddSetWeight] = useState('');
-  const [addSetReps, setAddSetReps] = useState('');
+  const [addSetWeight, setAddSetWeight] = useState(() => {
+    if (!addSet) return '';
+    const m = (store.machines ?? []).find((x) => x.id === addSet);
+    const p = store.activeUser ?? 'markus';
+    return formatWeight(m?.partnerSetups?.[p]?.lastWorkingWeight ?? 40);
+  });
+  const [addSetReps, setAddSetReps] = useState(() => {
+    if (!addSet) return '';
+    const m = (store.machines ?? []).find((x) => x.id === addSet);
+    const p = store.activeUser ?? 'markus';
+    return String(m?.partnerSetups?.[p]?.lastReps || 10);
+  });
   const [addSetError, setAddSetError] = useState('');
 
   if (!w) {

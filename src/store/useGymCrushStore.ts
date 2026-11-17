@@ -737,6 +737,7 @@ async function persistState() {
       language: state.language,
       machines: state.machines,
       sets: state.sets,
+      partnerStatus: state.partnerStatus,
       streak: state.streak,
       profiles: state.profiles,
       sessionAlarmMinutes: state.sessionAlarmMinutes,
@@ -806,6 +807,9 @@ async function loadPersistedState() {
           ? parsed.machines.map(normalizeMachine)
           : state.machines,
         sets: Array.isArray(parsed.sets) ? parsed.sets : state.sets,
+        partnerStatus: parsed.partnerStatus && typeof parsed.partnerStatus === 'object'
+          ? { ...state.partnerStatus, ...parsed.partnerStatus }
+          : state.partnerStatus,
         streak: parsed.streak || state.streak,
         profiles: parsed.profiles
           ? {

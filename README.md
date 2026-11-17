@@ -29,6 +29,20 @@ GymCrush keeps **both partners in sync without getting in the way**:
 
 ---
 
+## Screenshots
+
+*Captured on iPhone 18 Pro Simulator (iOS 27.2).*
+
+| Active Workout & Timing | Partner Tab (Read-Only) | Empty Workout Start | Inline Edit & Keyboard |
+| :---: | :---: | :---: | :---: |
+| <img src="docs/previews/workout-active-timing.png" alt="Active workout showing rest timer, set timestamps, and per-exercise timing analytics" width="210" /> | <img src="docs/previews/workout-partner-tab.png" alt="Read-only Partner progress tab showing partner sets, PR badge, and current exercise" width="210" /> | <img src="docs/previews/workout-empty.png" alt="New empty workout started without a preset" width="210" /> | <img src="docs/previews/edit-exercise.png" alt="Inline exercise editor with muscle group chips unobstructed above the iOS keyboard" width="210" /> |
+
+| Exercise Settings Sheet | History Start Times | History Workout Editor | Workout Summary & Timing |
+| :---: | :---: | :---: | :---: |
+| <img src="docs/previews/edit-exercise-sheet.png" alt="Edit exercise modal sheet with photo and naming controls" width="210" /> | <img src="docs/previews/history-list.png" alt="History list showing workout start times and session durations" width="210" /> | <img src="docs/previews/history-workout-edit.png" alt="History workout detail editor with add/remove exercise controls and timing stats" width="210" /> | <img src="docs/previews/workout-summary.png" alt="Workout complete summary with start/end times and per-exercise timing breakdown" width="210" /> |
+
+---
+
 ## Key Features
 
 ### Visual Machine Catalog

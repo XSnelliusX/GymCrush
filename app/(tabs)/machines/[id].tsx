@@ -15,7 +15,7 @@ import {
 const PARTNERS: PartnerId[] = ['markus', 'partner'];
 
 export default function MachineDetailScreen() {
-  const { id } = useLocalSearchParams<{ id: string }>();
+  const { id, edit } = useLocalSearchParams<{ id: string; edit?: string }>();
   const router = useRouter();
   const c = useCopy();
   const { colors } = useTheme();
@@ -23,7 +23,16 @@ export default function MachineDetailScreen() {
   const { language, profiles, activeUser } = store;
   const machine = store.machines.find((m) => m.id === id);
   const [partner, setPartner] = useState<PartnerId>(activeUser);
-  const [editing, setEditing] = useState<{ name: string; nameZh: string; muscleGroup: MuscleGroup; locationNote: string } | null>(null);
+  const [editing, setEditing] = useState<{ name: string; nameZh: string; muscleGroup: MuscleGroup; locationNote: string } | null>(() =>
+    edit === '1' && machine
+      ? {
+          name: machine.name,
+          nameZh: machine.nameZh || '',
+          muscleGroup: machine.muscleGroup,
+          locationNote: machineLocation(machine, language),
+        }
+      : null,
+  );
   const [busy, setBusy] = useState(false);
 
   // Deleted (here or by the partner's device): render nothing while we pop back.

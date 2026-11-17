@@ -1,6 +1,6 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Alert, Platform, Pressable, StyleSheet, View } from 'react-native';
-import { useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useGymCrushStore } from '../src/store/useGymCrushStore';
 import { plural, useCopy } from '../src/i18n/useCopy';
@@ -18,11 +18,16 @@ import { machineName, otherPartner, sessionWorkoutId } from '../src/features/wor
 export default function WorkoutScreen() {
   const store = useGymCrushStore();
   const router = useRouter();
+  const { tab } = useLocalSearchParams<{ tab?: string }>();
   const { colors } = useTheme();
   const c = useCopy();
   const insets = useSafeAreaInsets();
   const [restHeight, setRestHeight] = useState(0);
-  const [activeTab, setActiveTab] = useState<'me' | 'partner'>('me');
+  const [activeTab, setActiveTab] = useState<'me' | 'partner'>(tab === 'partner' ? 'partner' : 'me');
+
+  useEffect(() => {
+    if (tab === 'partner' || tab === 'me') setActiveTab(tab);
+  }, [tab]);
 
   const me = store.activeUser;
   const partnerId = otherPartner(me);
