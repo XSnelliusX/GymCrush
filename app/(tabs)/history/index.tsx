@@ -6,8 +6,9 @@ import { Avatar, AppText, EmptyState, Icon, ListRow, ListSection, ScreenScroll, 
 import { space, useTheme } from '../../../src/theme/theme';
 import { useGymCrushStore } from '../../../src/store/useGymCrushStore';
 import { plural, useCopy } from '../../../src/i18n/useCopy';
-import { workoutDuration } from '../../../src/services/workoutHistory';
+import { workoutDuration, workoutStart } from '../../../src/services/workoutHistory';
 import { formatDuration, groupByWeek } from '../../../src/features/history/helpers';
+import { formatClockTime } from '../../../src/features/workout/exerciseTiming';
 import { ProgressView } from '../../../src/features/history/ProgressView';
 
 export default function HistoryScreen() {
@@ -44,7 +45,10 @@ export default function HistoryScreen() {
               const sets = store.sets.filter((s) => s.workoutId === w.id);
               const prs = sets.filter((s) => s.isPR).length;
               const dur = formatDuration(workoutDuration(w));
-              const meta = [new Date(w.finishedAt).toLocaleDateString(locale, { weekday: 'short', month: 'short', day: 'numeric' }), dur, c(`${plural(sets.length, 'set', 'sets')}`, `${sets.length} 組`)].filter(Boolean).join(' · ');
+              const startIso = workoutStart(w) ?? w.finishedAt;
+              const startClock = formatClockTime(startIso, store.language);
+              const dateLabel = new Date(startIso).toLocaleDateString(locale, { weekday: 'short', month: 'short', day: 'numeric' });
+              const meta = [[dateLabel, startClock].filter(Boolean).join(' '), dur, c(`${plural(sets.length, 'set', 'sets')}`, `${sets.length} 組`)].filter(Boolean).join(' · ');
               const title = w.title || c('Workout', '訓練');
               return (
                 <ListRow

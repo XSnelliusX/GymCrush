@@ -10,6 +10,8 @@ import { DuoRings } from '../src/ui/DuoRings';
 import { formatTime } from '../src/components/RestTimerBar';
 import { PartnerId } from '../src/types/gym';
 import { formatWeight, machineName } from '../src/features/workout/workoutHelpers';
+import { computeWorkoutExerciseAnalytics, formatClockTime, formatShortDuration } from '../src/features/workout/exerciseTiming';
+import { workoutStart } from '../src/services/workoutHistory';
 
 const PARTNERS: PartnerId[] = ['markus', 'partner'];
 
@@ -25,6 +27,14 @@ export default function WorkoutSummaryScreen() {
   const prs = sets.filter((s) => s.isPR);
   const done = () => (router.canDismiss() ? router.dismissAll() : router.replace('/today'));
 
+  const startIso = workout ? workoutStart(workout) : undefined;
+  const startClock = formatClockTime(startIso, store.language);
+  const endClock = formatClockTime(workout?.finishedAt, store.language);
+  const machineIds = workout ? [...new Set([...(workout.machineIds ?? []), ...sets.map((s) => s.machineId)])] : [];
+  const exerciseTimings = workout
+    ? computeWorkoutExerciseAnalytics(sets, machineIds, workout.exerciseTimings, startIso)
+    : [];
+
   return (
     <View style={{ flex: 1, backgroundColor: colors.bg }}>
       <ScrollView contentContainerStyle={[styles.content, { paddingTop: (Platform.OS === 'ios' ? 0 : insets.top) + space.xxl }]}>
@@ -34,6 +44,11 @@ export default function WorkoutSummaryScreen() {
           {workout?.durationSeconds !== undefined && (
             <AppText variant="number" tone="secondary" accessibilityLabel={c(`Duration ${formatTime(workout.durationSeconds)}`, `時間 ${formatTime(workout.durationSeconds)}`)}>
               {workout.title ? `${workout.title} · ` : ''}{formatTime(workout.durationSeconds, true)}
+            </AppText>
+          )}
+          {(startClock || endClock) && (
+            <AppText variant="footnote" tone="secondary">
+              {[startClock ? `${c('Started', '開始')} ${startClock}` : null, endClock ? `${c('Ended', '結束')} ${endClock}` : null].filter(Boolean).join(' · ')}
             </AppText>
           )}
         </View>
@@ -70,6 +85,30 @@ export default function WorkoutSummaryScreen() {
           </Card>
         )}
 
+        {exerciseTimings.length > 0 && (
+          <Card style={{ gap: space.md }}>
+            <AppText variant="headline">{c('Exercise timing', '動作時間統計')}</AppText>
+            {exerciseTimings.map((item, idx) => {
+              const m = store.machines.find((x) => x.id === item.machineId);
+              const name = machineName(m, store.language) || sets.find((s) => s.machineId === item.machineId)?.machineName || c('Exercise', '動作');
+              const startStr = formatClockTime(item.startedAt, store.language);
+              const endStr = formatClockTime(item.endedAt, store.language);
+              const metrics = [
+                startStr ? (endStr && endStr !== startStr ? `${startStr} – ${endStr}` : startStr) : null,
+                item.avgSetSeconds !== undefined ? `${c('Avg/set', '每組平均')} ${formatShortDuration(item.avgSetSeconds)}` : null,
+                item.avgBreakSeconds !== undefined ? `${c('Avg break', '平均休息')} ${formatShortDuration(item.avgBreakSeconds)}` : null,
+                item.timeSincePreviousExerciseSeconds !== undefined ? `${c('Gap', '間隔')} ${formatShortDuration(item.timeSincePreviousExerciseSeconds)}` : null,
+              ].filter(Boolean);
+              return (
+                <View key={item.machineId} style={[styles.timingRow, idx > 0 && { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.separator, paddingTop: space.sm }]}>
+                  <AppText variant="subhead" style={{ fontWeight: '600' }} numberOfLines={1}>{name}</AppText>
+                  {metrics.length > 0 && <AppText variant="footnote" tone="secondary">{metrics.join(' · ')}</AppText>}
+                </View>
+              );
+            })}
+          </Card>
+        )}
+
         <Card style={styles.week}>
           <DuoRings
             size={128}
@@ -102,6 +141,7 @@ const styles = StyleSheet.create({
   hero: { alignItems: 'center', gap: space.sm, paddingBottom: space.md },
   row: { flexDirection: 'row', gap: space.md },
   prRow: { flexDirection: 'row', alignItems: 'center', gap: space.sm, flexWrap: 'wrap' },
+  timingRow: { gap: 2 },
   week: { flexDirection: 'row', alignItems: 'center', gap: space.lg },
   footer: { paddingHorizontal: gutter, paddingTop: space.md },
 });

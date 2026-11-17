@@ -12,7 +12,7 @@ import { ExerciseCard } from '../src/features/workout/ExerciseCard';
 import { RestPanel } from '../src/features/workout/RestPanel';
 import { PartnerProgressView } from '../src/features/workout/PartnerProgressView';
 import { ReactionBanner } from '../src/components/ReactionBanner';
-import { formatClockTime } from '../src/features/workout/exerciseTiming';
+import { formatClockTime, computeWorkoutExerciseAnalytics, formatShortDuration } from '../src/features/workout/exerciseTiming';
 import { machineName, otherPartner, sessionWorkoutId } from '../src/features/workout/workoutHelpers';
 
 export default function WorkoutScreen() {
@@ -38,6 +38,20 @@ export default function WorkoutScreen() {
     [store.sets, partnerWorkoutId, partnerId],
   );
   const sessionMachines = store.sessionMachineIds.map((id) => store.machines.find((m) => m.id === id)).filter((m) => !!m);
+  const exerciseAnalytics = useMemo(
+    () =>
+      computeWorkoutExerciseAnalytics(
+        sessionSets,
+        store.sessionMachineIds,
+        store.sessionExerciseTimings,
+        store.sessionStartedAt ? new Date(store.sessionStartedAt).toISOString() : undefined,
+      ),
+    [sessionSets, store.sessionMachineIds, store.sessionExerciseTimings, store.sessionStartedAt],
+  );
+  const analyticsByMachine = useMemo(
+    () => new Map(exerciseAnalytics.map((a) => [a.machineId, a])),
+    [exerciseAnalytics],
+  );
   const focusedId = sessionMachines.some((m) => m.id === store.selectedMachineId) ? store.selectedMachineId : sessionMachines[0]?.id;
   const topPad = Platform.OS === 'ios' ? space.md : insets.top + space.sm;
 
@@ -122,9 +136,25 @@ export default function WorkoutScreen() {
               />
             ) : (
               <>
-                {sessionMachines.map((m) => (
-                  <ExerciseCard key={m.id} machine={m} sessionSets={sessionSets} workoutId={workoutId} focused={m.id === focusedId} />
-                ))}
+                {sessionMachines.map((m) => {
+                  const timing = analyticsByMachine.get(m.id);
+                  return (
+                    <React.Fragment key={m.id}>
+                      {timing?.timeSincePreviousExerciseSeconds !== undefined && (
+                        <View style={styles.transitionRow}>
+                          <Icon name={{ ios: 'arrow.down', android: 'south' }} size={13} color={colors.textTertiary} />
+                          <AppText variant="caption" tone="secondary">
+                            {c(
+                              `Between exercises · ${formatShortDuration(timing.timeSincePreviousExerciseSeconds)}`,
+                              `換動作間隔 · ${formatShortDuration(timing.timeSincePreviousExerciseSeconds)}`,
+                            )}
+                          </AppText>
+                        </View>
+                      )}
+                      <ExerciseCard machine={m} sessionSets={sessionSets} workoutId={workoutId} focused={m.id === focusedId} timing={timing} />
+                    </React.Fragment>
+                  );
+                })}
                 <Button title={c('Add exercise', '新增動作')} icon={{ ios: 'plus', android: 'add' }} variant="tinted" tint={user} onPress={() => router.push('/add-exercise')} />
               </>
             )}
@@ -208,4 +238,5 @@ const styles = StyleSheet.create({
   partner: { flexDirection: 'row', alignItems: 'center', gap: space.md, padding: space.md, borderRadius: radius.card },
   pinned: { marginHorizontal: gutter, marginBottom: space.md },
   partnerOpen: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: space.md },
+  transitionRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: space.xs, paddingVertical: 2 },
 });

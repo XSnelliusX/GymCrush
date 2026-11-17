@@ -9,13 +9,14 @@ import { radius, space, touch, useTheme } from '../../theme/theme';
 import { AppText, Button, Card, Icon, IconButton } from '../../ui/primitives';
 import { GymMachine, PartnerId, WorkoutSetLog } from '../../types/gym';
 import { adjustmentSummary, defaultDraft, formatWeight, machineName, previousSet } from './workoutHelpers';
+import { ExerciseTimingAnalytics, formatClockTime, formatShortDuration } from './exerciseTiming';
 import { KeyboardDoneBar, Stepper } from './Stepper';
 
 type Draft = { weight: string; reps: string };
 
 /** One exercise in the session. Only the focused card (`focused`) shows the next-set input, keeping one filled button on screen. */
-export function ExerciseCard({ machine, sessionSets, workoutId, focused }: {
-  machine: GymMachine; sessionSets: WorkoutSetLog[]; workoutId: string | null; focused: boolean;
+export function ExerciseCard({ machine, sessionSets, workoutId, focused, timing }: {
+  machine: GymMachine; sessionSets: WorkoutSetLog[]; workoutId: string | null; focused: boolean; timing?: ExerciseTimingAnalytics;
 }) {
   const store = useGymCrushStore();
   const router = useRouter();
@@ -78,6 +79,13 @@ export function ExerciseCard({ machine, sessionSets, workoutId, focused }: {
   };
 
   const settings = adjustmentSummary(machine, me);
+  const startClock = formatClockTime(timing?.startedAt, lang);
+  const endClock = sets.length > 0 ? formatClockTime(timing?.endedAt, lang) : '';
+  const timingSummary = [
+    startClock ? (endClock && endClock !== startClock ? `${startClock} – ${endClock}` : `${c('Started', '開始')} ${startClock}`) : null,
+    timing?.avgSetSeconds !== undefined ? `${c('Avg/set', '每組平均')} ${formatShortDuration(timing.avgSetSeconds)}` : null,
+    timing?.avgBreakSeconds !== undefined ? `${c('Avg break', '平均休息')} ${formatShortDuration(timing.avgBreakSeconds)}` : null,
+  ].filter(Boolean);
 
   return (
     <Card style={{ borderWidth: 2, borderColor: focused ? user.color : 'transparent' }}>
@@ -115,6 +123,12 @@ export function ExerciseCard({ machine, sessionSets, workoutId, focused }: {
           <AppText variant="subhead" numberOfLines={1} style={{ flexShrink: 1, fontWeight: '500' }}>{settings || c('Add settings', '新增設定')}</AppText>
         </Pressable>
       </View>
+
+      {timingSummary.length > 0 && (
+        <AppText variant="caption" tone="secondary" style={{ marginTop: space.sm }}>
+          {timingSummary.join(' · ')}
+        </AppText>
+      )}
 
       {sets.length > 0 && (
         <View style={{ marginTop: space.md }}>
@@ -200,6 +214,7 @@ function SetRow({ set, workoutId }: { set: WorkoutSetLog; workoutId: string | nu
           </View>
         )}
       </View>
+      <AppText variant="caption" tone="tertiary">{formatClockTime(set.loggedAt, store.language)}</AppText>
       <Icon name={{ ios: 'checkmark.circle.fill', android: 'check_circle' }} size={22} color={owner.color} />
     </Pressable>
   );

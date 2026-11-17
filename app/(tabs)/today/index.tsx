@@ -9,6 +9,8 @@ import { plural, useCopy } from '../../../src/i18n/useCopy';
 import { useGymCrushStore } from '../../../src/store/useGymCrushStore';
 import { machineLabel, routineMachineIds, routineName } from '../../../src/features/today/routines';
 import { formatShortDate } from '../../../src/features/today/date';
+import { workoutStart } from '../../../src/services/workoutHistory';
+import { formatClockTime } from '../../../src/features/workout/exerciseTiming';
 import type { PartnerId } from '../../../src/types/gym';
 
 const clock = (s: number) => {
@@ -180,7 +182,11 @@ export default function TodayScreen() {
                 <ListRow
                   icon={{ ios: 'clock', android: 'schedule' }}
                   title={last.title || c('Workout', '訓練')}
-                  subtitle={[formatShortDate(last.finishedAt, store.language), last.durationSeconds ? c(`${Math.round(last.durationSeconds / 60)} min`, `${Math.round(last.durationSeconds / 60)} 分鐘`) : null].filter(Boolean).join(' · ')}
+                  subtitle={[
+                    formatShortDate(workoutStart(last) ?? last.finishedAt, store.language),
+                    formatClockTime(workoutStart(last) ?? last.finishedAt, store.language),
+                    last.durationSeconds ? c(`${Math.round(last.durationSeconds / 60)} min`, `${Math.round(last.durationSeconds / 60)} 分鐘`) : null,
+                  ].filter(Boolean).join(' · ')}
                   onPress={() => router.push(`/history/${last.id}`)}
                 />
               </ListSection>

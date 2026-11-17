@@ -601,15 +601,25 @@ test('Test 6 — Source File, TypeScript AST & Package Contract Verification', (
     'src/store/useGymCrushStore.ts',
     'src/theme/theme.ts',
     'src/ui/primitives.tsx',
+    'src/ui/keyboard.tsx',
     'src/components/RestTimerBar.tsx',
+    'src/features/workout/exerciseTiming.ts',
+    'src/features/workout/PartnerProgressView.tsx',
     'app/_layout.tsx',
     'app/index.tsx',
     'app/(tabs)/_layout.tsx',
     'app/(tabs)/today/index.tsx',
     'app/(tabs)/machines/index.tsx',
+    'app/(tabs)/machines/[id].tsx',
     'app/(tabs)/history/index.tsx',
+    'app/(tabs)/history/[workoutId].tsx',
     'app/(tabs)/couple/index.tsx',
     'app/workout.tsx',
+    'app/partner-workout.tsx',
+    'app/workout-summary.tsx',
+    'app/machine-settings/[id].tsx',
+    'app/edit-set/[id].tsx',
+    'app/cheer.tsx',
     'app/onboarding.tsx',
   ];
 
@@ -1489,14 +1499,19 @@ test('History deletion asks for confirmation before changing data or navigating'
   const createElement = (type, props, ...children) => ({ type, props: props || {}, children: children.flat() });
   const mocks = {
     react: { createElement, useState: (initial) => [initial, () => {}] },
-    'react-native': { Platform: { OS: 'android' }, Alert: { alert: (...args) => { alert = args; } }, View: 'View', Pressable: 'Pressable' },
+    'react-native': { Platform: { OS: 'android' }, Alert: { alert: (...args) => { alert = args; } }, View: 'View', Pressable: 'Pressable', ScrollView: 'ScrollView', StyleSheet: { create: (s) => s, hairlineWidth: 1 } },
     'expo-router': { Stack: { Screen: 'Screen' }, useLocalSearchParams: () => ({ workoutId: workout.id }), useRouter: () => ({ replace: (path) => destinations.push(path) }) },
     '../../../src/store/useGymCrushStore': { useGymCrushStore: () => store },
-    '../../../src/theme/theme': { useTheme: () => ({ colors: {} }), space: {}, radius: {}, touch: {} },
-    '../../../src/ui/primitives': Object.fromEntries(['AppText', 'Avatar', 'Button', 'Card', 'EmptyState', 'Icon', 'ScreenScroll', 'TextField'].map((name) => [name, name]).concat([['haptics', { warning() {} }]])),
+    '../../../src/theme/theme': { useTheme: () => ({ colors: {} }), gutter: 16, space: {}, radius: {}, touch: {} },
+    '../../../src/ui/primitives': Object.fromEntries(['AppText', 'Avatar', 'Button', 'Card', 'Chip', 'EmptyState', 'Icon', 'IconButton', 'ScreenScroll', 'SegmentedControl', 'TextField'].map((name) => [name, name]).concat([['haptics', { warning() {} }]])),
     '../../../src/i18n/useCopy': { useCopy: () => (en) => en, plural: (n) => `${n} sets` },
-    '../../../src/services/workoutHistory': { workoutDuration: () => undefined },
+    '../../../src/services/workoutHistory': { workoutDuration: () => undefined, workoutStart: () => undefined },
     '../../../src/features/history/helpers': { formatDuration: () => undefined },
+    '../../../src/features/workout/exerciseTiming': { computeWorkoutExerciseAnalytics: () => [], formatClockTime: () => '', formatShortDuration: () => '' },
+    '../../../src/features/workout/Stepper': { KeyboardDoneBar: 'KeyboardDoneBar', Stepper: 'Stepper' },
+    '../../../src/features/workout/workoutHelpers': { formatWeight: (n) => String(n), machineName: (m) => m?.name || '' },
+    '../../../src/features/machines/machineUtils': { MUSCLE_GROUPS: ['Chest', 'Back', 'Legs', 'Glutes', 'Shoulders', 'Arms', 'Core', 'Full Body'] },
+    '../../../src/i18n/translations': translationsModule,
     '../../../src/components/MachineImage': { MachineImage: 'MachineImage' },
   };
   const findDelete = (node) => {
@@ -1524,5 +1539,169 @@ test('History deletion asks for confirmation before changing data or navigating'
     assert.equal(changes.length, 2);
   } finally {
     window.confirm = previousConfirm;
+  }
+});
+
+test('Starting a workout without a preset starts completely empty', () => {
+  const module = loadTsModule('src/store/useGymCrushStore.ts');
+  let store = module.useGymCrushStore();
+  store.finishSession();
+  store.addMachine({
+    name: 'Cable Fly',
+    muscleGroup: 'Chest',
+    locationNote: 'Zone 1',
+    photoUri: 'https://example.com/fly.jpg',
+    markusSeat: '4',
+    partnerSeat: '2',
+  });
+  store = module.useGymCrushStore();
+  assert.deepEqual(store.sessionMachineIds, [], 'Adding a machine outside a workout must not prefill future empty workouts');
+  store.startSession();
+  store = module.useGymCrushStore();
+  assert.equal(store.isSessionActive, true);
+  assert.deepEqual(store.sessionMachineIds, [], 'startSession() with no preset must start with zero exercises');
+  assert.equal(store.selectedMachineId, null);
+  store.finishSession();
+});
+
+test('Editing an exercise updates all fields including muscle group and workout splits', async () => {
+  memoryStorage.clear();
+  const module = loadTsModule('src/store/useGymCrushStore.ts');
+  await new Promise((resolve) => setImmediate(resolve));
+  let store = module.useGymCrushStore();
+  const target = store.machines.find((m) => m.id === 'm-chest-press');
+  assert.equal(target.muscleGroup, 'Chest');
+  store.startSession([target.id], 'Upper');
+  const logged = module.useGymCrushStore().logSet(60, 10, target.id);
+  module.useGymCrushStore().finishSession();
+
+  module.useGymCrushStore().updateMachine(target.id, {
+    name: 'Incline Row Machine',
+    nameZh: '上斜划船機',
+    muscleGroup: 'Back',
+    locationNote: 'Tower 3',
+    photoUri: 'https://example.com/row.jpg',
+  });
+  store = module.useGymCrushStore();
+  const updated = store.machines.find((m) => m.id === target.id);
+  assert.equal(updated.name, 'Incline Row Machine');
+  assert.equal(updated.nameZh, '上斜划船機');
+  assert.equal(updated.muscleGroup, 'Back');
+  assert.deepEqual(updated.workoutSplits, ['pull', 'upper']);
+  assert.equal(updated.locationNote, 'Tower 3');
+  assert.equal(updated.photoUri, 'https://example.com/row.jpg');
+  assert.equal(store.sets.find((s) => s.id === logged.id).machineName, 'Incline Row Machine');
+
+  const reloaded = loadTsModule('src/store/useGymCrushStore.ts');
+  await new Promise((resolve) => setImmediate(resolve));
+  const persisted = reloaded.useGymCrushStore().machines.find((m) => m.id === target.id);
+  assert.equal(persisted.muscleGroup, 'Back');
+  assert.deepEqual(persisted.workoutSplits, ['pull', 'upper']);
+  assert.equal(persisted.name, 'Incline Row Machine');
+});
+
+test('Editing saved workouts supports adding/removing exercises and logging partner sets', async () => {
+  memoryStorage.clear();
+  const module = loadTsModule('src/store/useGymCrushStore.ts');
+  await new Promise((resolve) => setImmediate(resolve));
+  module.useGymCrushStore().startSession(['m-chest-press'], 'Push');
+  module.useGymCrushStore().logSet(80, 8, 'm-chest-press');
+  module.useGymCrushStore().finishSession();
+
+  let store = module.useGymCrushStore();
+  const workout = store.completedWorkouts.at(-1);
+  assert.deepEqual(workout.participants, ['markus']);
+
+  // Partner forgot their phone: add Lat Pulldown and log sets for partner on this completed workout
+  store.addExerciseToWorkout(workout.id, 'm-lat-pulldown');
+  store = module.useGymCrushStore();
+  assert.ok(store.completedWorkouts.at(-1).machineIds.includes('m-lat-pulldown'));
+
+  const addedPartnerSet = store.addSetToWorkout(workout.id, 'm-lat-pulldown', 'partner', 55, 10);
+  assert.ok(addedPartnerSet);
+  assert.equal(addedPartnerSet.userId, 'partner');
+  assert.equal(addedPartnerSet.isPR, true, 'Partner PR (55 > 47.5) must be detected on retroactively added set');
+
+  store = module.useGymCrushStore();
+  assert.ok(store.completedWorkouts.at(-1).participants.includes('partner'));
+  assert.equal(store.profiles.partner.completedThisWeek, 1);
+
+  // Completed workout sets can be edited regardless of activeUser
+  store.changeSet(addedPartnerSet.id, { weight: 40, reps: 12 });
+  store = module.useGymCrushStore();
+  assert.equal(store.sets.find((s) => s.id === addedPartnerSet.id).weight, 40);
+
+  // Removing exercise deletes its sets and updates participants & records
+  store.removeExerciseFromWorkout(workout.id, 'm-lat-pulldown');
+  store = module.useGymCrushStore();
+  assert.equal(store.sets.some((s) => s.workoutId === workout.id && s.machineId === 'm-lat-pulldown'), false);
+  assert.equal(store.completedWorkouts.at(-1).machineIds.includes('m-lat-pulldown'), false);
+  assert.deepEqual(store.completedWorkouts.at(-1).participants, ['markus']);
+  assert.equal(store.profiles.partner.completedThisWeek, 0);
+});
+
+test('Phone-clock timing tracks workout/exercise start & end and computes set, break, and gap analytics', () => {
+  const { computeWorkoutExerciseAnalytics } = loadTsModule('src/features/workout/exerciseTiming.ts');
+  const realNow = Date.now;
+  let clock = Date.parse('2026-11-17T09:00:00.000Z');
+  Date.now = () => clock;
+  try {
+    const module = loadTsModule('src/store/useGymCrushStore.ts');
+    let store = module.useGymCrushStore();
+    store.finishSession();
+
+    // Start workout at 09:00:00 with Chest Press
+    store.startSession(['m-chest-press'], 'Push');
+    clock += 40_000; // 09:00:40 -> Set 1 logged (40s active)
+    const s1 = module.useGymCrushStore().logSet(80, 10, 'm-chest-press');
+
+    // Simulate 90s rest finishing at 09:02:10
+    clock += 90_000;
+    intervalCallbacks.find((timer) => timer.ms === 100).callback();
+
+    // 50s later at 09:03:00 -> Set 2 logged
+    clock += 50_000;
+    const s2 = module.useGymCrushStore().logSet(80, 10, 'm-chest-press');
+
+    // Transition to Lat Pulldown 120s later at 09:05:00
+    clock += 120_000;
+    module.useGymCrushStore().addMachineToSession('m-lat-pulldown');
+
+    // 45s later at 09:05:45 -> Set 1 on Lat Pulldown
+    clock += 45_000;
+    const s3 = module.useGymCrushStore().logSet(70, 10, 'm-lat-pulldown');
+
+    module.useGymCrushStore().finishSession();
+    store = module.useGymCrushStore();
+    const completed = store.completedWorkouts.at(-1);
+
+    assert.equal(s1.startedAt, '2026-11-17T09:00:00.000Z');
+    assert.equal(s1.loggedAt, '2026-11-17T09:00:40.000Z');
+    assert.equal(s2.startedAt, '2026-11-17T09:02:10.000Z');
+    assert.equal(s2.loggedAt, '2026-11-17T09:03:00.000Z');
+    assert.equal(s3.exerciseStartedAt, '2026-11-17T09:05:00.000Z');
+
+    assert.equal(completed.exerciseTimings['m-chest-press'].startedAt, '2026-11-17T09:00:00.000Z');
+    assert.equal(completed.exerciseTimings['m-chest-press'].endedAt, '2026-11-17T09:03:00.000Z');
+    assert.equal(completed.exerciseTimings['m-lat-pulldown'].startedAt, '2026-11-17T09:05:00.000Z');
+    assert.equal(completed.exerciseTimings['m-lat-pulldown'].endedAt, '2026-11-17T09:05:45.000Z');
+
+    const workoutSets = store.sets.filter((s) => s.workoutId === completed.id);
+    const analytics = computeWorkoutExerciseAnalytics(
+      workoutSets,
+      completed.machineIds,
+      completed.exerciseTimings,
+      completed.startedAt,
+    );
+    assert.equal(analytics.length, 2);
+    assert.equal(analytics[0].machineId, 'm-chest-press');
+    assert.equal(analytics[0].avgSetSeconds, 45); // avg(40, 50)
+    assert.equal(analytics[0].avgBreakSeconds, 90);
+    assert.deepEqual(analytics[0].breaksSeconds, [90]);
+    assert.equal(analytics[1].machineId, 'm-lat-pulldown');
+    assert.equal(analytics[1].timeSincePreviousExerciseSeconds, 120);
+    assert.equal(analytics[1].avgSetSeconds, 45);
+  } finally {
+    Date.now = realNow;
   }
 });
