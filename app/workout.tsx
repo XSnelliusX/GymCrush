@@ -5,11 +5,13 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useGymCrushStore } from '../src/store/useGymCrushStore';
 import { plural, useCopy } from '../src/i18n/useCopy';
 import { gutter, radius, space, useTheme } from '../src/theme/theme';
-import { AppText, Avatar, Button, EmptyState, Icon, IconButton } from '../src/ui/primitives';
+import { AppText, Avatar, Button, EmptyState, Icon, IconButton, SegmentedControl } from '../src/ui/primitives';
 import { formatTime } from '../src/components/RestTimerBar';
 import { ExerciseCard } from '../src/features/workout/ExerciseCard';
 import { RestPanel } from '../src/features/workout/RestPanel';
+import { PartnerProgressView } from '../src/features/workout/PartnerProgressView';
 import { ReactionBanner } from '../src/components/ReactionBanner';
+import { formatClockTime } from '../src/features/workout/exerciseTiming';
 import { machineName, otherPartner, sessionWorkoutId } from '../src/features/workout/workoutHelpers';
 
 export default function WorkoutScreen() {
@@ -19,13 +21,20 @@ export default function WorkoutScreen() {
   const c = useCopy();
   const insets = useSafeAreaInsets();
   const [restHeight, setRestHeight] = useState(0);
+  const [activeTab, setActiveTab] = useState<'me' | 'partner'>('me');
 
   const me = store.activeUser;
+  const partnerId = otherPartner(me);
   const user = colors.partners[me];
   const workoutId = sessionWorkoutId(store.sessionStartedAt);
   const sessionSets = useMemo(
     () => store.sets.filter((s) => s.workoutId === workoutId && s.userId === me).sort((a, b) => Date.parse(a.loggedAt) - Date.parse(b.loggedAt)),
     [store.sets, workoutId, me],
+  );
+  const partnerWorkoutId = sessionWorkoutId(store.partnerStatus.sessionStartedAt ?? store.sessionStartedAt);
+  const partnerSetsCount = useMemo(
+    () => store.sets.filter((s) => s.workoutId === partnerWorkoutId && s.userId === partnerId).length,
+    [store.sets, partnerWorkoutId, partnerId],
   );
   const sessionMachines = store.sessionMachineIds.map((id) => store.machines.find((m) => m.id === id)).filter((m) => !!m);
   const focusedId = sessionMachines.some((m) => m.id === store.selectedMachineId) ? store.selectedMachineId : sessionMachines[0]?.id;
@@ -43,6 +52,7 @@ export default function WorkoutScreen() {
     ],
   );
 
+  const startedClock = store.sessionStartedAt ? formatClockTime(store.sessionStartedAt, store.language) : '';
   const topBar = (
     <View style={[styles.topBar, { paddingTop: topPad }]}>
       <IconButton icon={{ ios: 'chevron.down', android: 'keyboard_arrow_down' }} label={c('Minimize workout', '縮小訓練畫面')} onPress={() => router.back()} variant="tinted" />
@@ -50,7 +60,7 @@ export default function WorkoutScreen() {
         <AppText variant="headline" numberOfLines={1} accessibilityRole="header">{store.sessionTitle || c('Workout', '訓練')}</AppText>
         {store.isSessionActive && (
           <AppText variant="number" tone="secondary" accessibilityLabel={c(`Elapsed ${formatTime(store.sessionElapsedSeconds)}`, `已進行 ${formatTime(store.sessionElapsedSeconds)}`)}>
-            {formatTime(store.sessionElapsedSeconds, true)}
+            {formatTime(store.sessionElapsedSeconds, true)}{startedClock ? ` · ${startedClock}` : ''}
           </AppText>
         )}
       </View>
@@ -72,38 +82,60 @@ export default function WorkoutScreen() {
     );
   }
 
+  const partnerTabLabel = partnerSetsCount > 0
+    ? `${store.profiles[partnerId].name} · ${partnerSetsCount}`
+    : store.profiles[partnerId].name;
+
   return (
     <View style={[styles.screen, { backgroundColor: colors.bg }]}>
       {topBar}
-      <PartnerStrip />
-      {/* iOS: ScrollView insets itself; Android edge-to-edge: adjustResize may not apply, so shrink via KAV "height". */}
-      <KeyboardAvoidingView style={{ flex: 1 }} enabled={Platform.OS === 'android'} behavior="height">
-        <ScrollView
-          automaticallyAdjustKeyboardInsets
-          keyboardShouldPersistTaps="handled"
-          keyboardDismissMode="interactive"
-          contentContainerStyle={{ paddingHorizontal: gutter, gap: space.lg, paddingBottom: Math.max(insets.bottom, space.md) + restHeight + space.xxl }}
-        >
-          <AlarmRow />
+      <View style={styles.tabWrap}>
+        <SegmentedControl
+          accessibilityLabel={c('Workout view', '訓練檢視')}
+          value={activeTab}
+          onChange={setActiveTab}
+          options={[
+            { value: 'me', label: `${store.profiles[me].name} · ${c('You', '你')}`, tint: colors.partners[me] },
+            { value: 'partner', label: partnerTabLabel, tint: colors.partners[partnerId] },
+          ]}
+        />
+      </View>
 
-          {sessionMachines.length === 0 ? (
-            <EmptyState
-              icon={{ ios: 'dumbbell', android: 'fitness_center' }}
-              title={c('No exercises yet', '還沒有動作')}
-              body={c('Add a machine to start logging sets.', '新增器材開始記錄組數。')}
-              action={{ title: c('Add exercise', '新增動作'), onPress: () => router.push('/add-exercise') }}
-            />
-          ) : (
-            <>
-              {sessionMachines.map((m) => (
-                <ExerciseCard key={m.id} machine={m} sessionSets={sessionSets} workoutId={workoutId} focused={m.id === focusedId} />
-              ))}
-              <Button title={c('Add exercise', '新增動作')} icon={{ ios: 'plus', android: 'add' }} variant="tinted" tint={user} onPress={() => router.push('/add-exercise')} />
-            </>
-          )}
-        </ScrollView>
-      </KeyboardAvoidingView>
-      <RestPanel onHeight={setRestHeight} />
+      {activeTab === 'partner' ? (
+        <PartnerProgressView embedded />
+      ) : (
+        <>
+          <PartnerStrip onOpenPartner={() => setActiveTab('partner')} />
+          {/* iOS: ScrollView insets itself; Android edge-to-edge: adjustResize may not apply, so shrink via KAV "height". */}
+          <KeyboardAvoidingView style={{ flex: 1 }} enabled={Platform.OS === 'android'} behavior="height">
+            <ScrollView
+              automaticallyAdjustKeyboardInsets
+              keyboardShouldPersistTaps="handled"
+              keyboardDismissMode="interactive"
+              contentContainerStyle={{ paddingHorizontal: gutter, gap: space.lg, paddingBottom: Math.max(insets.bottom, space.md) + restHeight + space.xxl }}
+            >
+              <AlarmRow />
+
+              {sessionMachines.length === 0 ? (
+                <EmptyState
+                  icon={{ ios: 'dumbbell', android: 'fitness_center' }}
+                  title={c('No exercises yet', '還沒有動作')}
+                  body={c('Add a machine to start logging sets.', '新增器材開始記錄組數。')}
+                  action={{ title: c('Add exercise', '新增動作'), onPress: () => router.push('/add-exercise') }}
+                />
+              ) : (
+                <>
+                  {sessionMachines.map((m) => (
+                    <ExerciseCard key={m.id} machine={m} sessionSets={sessionSets} workoutId={workoutId} focused={m.id === focusedId} />
+                  ))}
+                  <Button title={c('Add exercise', '新增動作')} icon={{ ios: 'plus', android: 'add' }} variant="tinted" tint={user} onPress={() => router.push('/add-exercise')} />
+                </>
+              )}
+            </ScrollView>
+          </KeyboardAvoidingView>
+          <RestPanel onHeight={setRestHeight} />
+        </>
+      )}
       {/* iOS page sheets cover the root banner. */}
       {Platform.OS === 'ios' && <ReactionBanner inSheet />}
     </View>
@@ -136,7 +168,7 @@ function AlarmRow() {
   );
 }
 
-function PartnerStrip() {
+function PartnerStrip({ onOpenPartner }: { onOpenPartner: () => void }) {
   const store = useGymCrushStore();
   const router = useRouter();
   const { colors } = useTheme();
@@ -156,8 +188,8 @@ function PartnerStrip() {
       <Pressable
         accessibilityRole="button"
         accessibilityLabel={`${name}, ${line}`}
-        accessibilityHint={c(`Opens ${name}'s workout`, `開啟 ${name} 的訓練`)}
-        onPress={() => router.push('/partner-workout')}
+        accessibilityHint={c(`Switches to ${name}'s progress tab`, `切換至 ${name} 的進度分頁`)}
+        onPress={onOpenPartner}
         style={({ pressed }) => [styles.partnerOpen, pressed && { opacity: 0.6 }]}
       >
         <Avatar partnerId={pid} name={name} size={36} online={status.isOnline} />
@@ -167,15 +199,16 @@ function PartnerStrip() {
         </View>
         <Icon name={{ ios: 'chevron.right', android: 'chevron_right' }} size={14} color={colors.textTertiary} />
       </Pressable>
-      <Button title={c('Cheer', '加油')} size="small" variant="tinted" tint={colors.partners[pid]} icon={{ ios: 'hands.clap.fill', android: 'celebration' }} onPress={() => router.push('/cheer')} accessibilityHint={c(`Send ${name} a cheer`, `為 ${name} 加油`)} />
+      <Button title={c('Cheer', '加油')} size="small" variant="tinted" tint={colors.partners[pid]} onPress={() => router.push('/cheer')} accessibilityHint={c(`Send ${name} a cheer`, `為 ${name} 加油`)} />
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   screen: { flex: 1 },
-  topBar: { flexDirection: 'row', alignItems: 'center', gap: space.sm, paddingHorizontal: space.md, paddingBottom: space.md },
+  topBar: { flexDirection: 'row', alignItems: 'center', gap: space.sm, paddingHorizontal: space.md, paddingBottom: space.sm },
   titleBlock: { flex: 1, alignItems: 'center' },
+  tabWrap: { paddingHorizontal: gutter, paddingBottom: space.md },
   partner: { flexDirection: 'row', alignItems: 'center', gap: space.md, padding: space.md, borderRadius: radius.card },
   pinned: { marginHorizontal: gutter, marginBottom: space.md },
   partnerOpen: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: space.md },
