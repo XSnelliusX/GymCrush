@@ -67,6 +67,12 @@ export interface GymMachine {
   partnerSetups: Record<PartnerId, MachinePartnerSetup>;
 }
 
+export interface ExerciseTiming {
+  machineId: string;
+  startedAt: string;
+  endedAt?: string;
+}
+
 export interface WorkoutSetLog {
   id: string;
   workoutId: string;
@@ -79,6 +85,8 @@ export interface WorkoutSetLog {
   unit: 'kg' | 'lbs';
   isPR: boolean;
   loggedAt: string;
+  startedAt?: string;
+  exerciseStartedAt?: string;
 }
 
 export type HypeEmoji = '🔥' | '💪' | '❤️' | '👑' | '👀' | '💧';
@@ -110,6 +118,7 @@ export interface PartnerLiveStatus {
   isSessionActive?: boolean;
   sessionStartedAt?: number | null;
   sessionMachineIds?: string[];
+  exerciseTimings?: Record<string, ExerciseTiming>;
   lastUpdated: string;
 }
 
@@ -127,6 +136,8 @@ export interface CompletedWorkout {
   finishedAt: string;
   durationSeconds?: number;
   participants: PartnerId[];
+  machineIds?: string[];
+  exerciseTimings?: Record<string, ExerciseTiming>;
 }
 
 export interface QuickRoutine {

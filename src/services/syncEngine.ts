@@ -2,6 +2,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { NativeModules, Platform } from 'react-native';
 import { CloudSync, cloudConfigured } from './cloudSync';
 import {
+  ExerciseTiming,
   GymMachine,
   HypeReaction,
   MachineAdjustment,
@@ -63,10 +64,12 @@ export interface SessionFinishedPayload {
   workoutId?: string;
   finishedAt?: string;
   participants?: PartnerId[];
+  machineIds?: string[];
+  exerciseTimings?: Record<string, ExerciseTiming>;
 }
 
 export type SyncEvent =
-  | { type: 'SESSION_CHANGED'; payload: { workoutId: string; title: string | null } }
+  | { type: 'SESSION_CHANGED'; payload: { workoutId: string; title?: string | null; machineIds?: string[]; participants?: PartnerId[] } }
   | { type: 'SET_CHANGED'; payload: { setId: string; set: WorkoutSetLog | null } }
   | { type: 'MACHINE_DELETED'; payload: { machineId: string } }
   | { type: 'SET_LOGGED'; payload: SetLoggedPayload }
@@ -103,7 +106,10 @@ function validEnvelope(value: any): value is SyncEnvelope {
   if (!payload || typeof payload !== 'object') return false;
   switch (event.type) {
     case 'SESSION_CHANGED': return typeof payload.workoutId === 'string' && !!payload.workoutId &&
-      (payload.title === null || (typeof payload.title === 'string' && !!payload.title.trim() && payload.title.length <= 120));
+      (payload.title !== undefined || payload.machineIds !== undefined || payload.participants !== undefined) &&
+      (payload.title === undefined || payload.title === null || (typeof payload.title === 'string' && !!payload.title.trim() && payload.title.length <= 120)) &&
+      (payload.machineIds === undefined || (Array.isArray(payload.machineIds) && payload.machineIds.every((id: unknown) => typeof id === 'string'))) &&
+      (payload.participants === undefined || (Array.isArray(payload.participants) && payload.participants.every(isUser)));
     case 'MACHINE_DELETED': return typeof payload.machineId === 'string';
     case 'SET_CHANGED': return typeof payload.setId === 'string' && (payload.set === null || (payload.set?.id === payload.setId && isNumber(payload.set.weight) && payload.set.weight >= 0 && Number.isSafeInteger(payload.set.reps) && payload.set.reps > 0));
     case 'SET_LOGGED': {

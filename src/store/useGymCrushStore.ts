@@ -5,6 +5,7 @@ import { AppState, Platform } from 'react-native';
 import {
   CompletedWorkout,
   CoupleStreakState,
+  ExerciseTiming,
   GymMachine,
   HypeEmoji,
   HypeReaction,
@@ -382,6 +383,8 @@ interface StoreState {
   sessionElapsedSeconds: number;
   sessionTitle: string;
   sessionMachineIds: string[];
+  sessionExerciseTimings: Record<string, ExerciseTiming>;
+  currentSetStartedAt: number | null;
   profiles: Record<PartnerId, PartnerProfile>;
   machines: GymMachine[];
   sets: WorkoutSetLog[];
@@ -431,7 +434,9 @@ let state: StoreState = {
   sessionStartedAt: null,
   sessionElapsedSeconds: 0,
   sessionTitle: 'Workout Session',
-  sessionMachineIds: ['m-chest-press', 'm-lat-pulldown'],
+  sessionMachineIds: [],
+  sessionExerciseTimings: {},
+  currentSetStartedAt: null,
   profiles: INITIAL_PROFILES,
   machines: INITIAL_MACHINES,
   sets: INITIAL_SETS,
@@ -521,7 +526,16 @@ function refreshProgress() {
   }, streak: { ...state.streak, currentStreakWeeks: count, bestStreakWeeks: best } };
 }
 
-function recordCompletedWorkout(payload: { workoutId?: string; finishedAt?: string; participants?: PartnerId[]; startedAt?: string; title?: string; durationSeconds?: number }) {
+function recordCompletedWorkout(payload: {
+  workoutId?: string;
+  finishedAt?: string;
+  participants?: PartnerId[];
+  startedAt?: string;
+  title?: string;
+  durationSeconds?: number;
+  machineIds?: string[];
+  exerciseTimings?: Record<string, ExerciseTiming>;
+}) {
   if (!payload.workoutId || !payload.finishedAt || !payload.participants?.length) return; // nobody logged a set: nothing to keep
   if (state.workoutEdits[payload.workoutId] === null) return;
   const existing = state.completedWorkouts.find((workout) => workout.id === payload.workoutId);
@@ -530,9 +544,15 @@ function recordCompletedWorkout(payload: { workoutId?: string; finishedAt?: stri
   const startedAt = payload.startedAt || (Number.isFinite(start) ? new Date(start).toISOString() : undefined);
   const durationSeconds = startedAt ? Math.max(0, Math.floor((Date.parse(payload.finishedAt) - Date.parse(startedAt)) / 1000)) : payload.durationSeconds;
   const isCurrent = payload.workoutId === `w_${state.sessionStartedAt}`;
+  const workoutSets = state.sets.filter((s) => s.workoutId === payload.workoutId);
+  const derivedMachineIds = [...new Set([...(payload.machineIds ?? []), ...workoutSets.map((s) => s.machineId)])];
+  const timingsToStore = payload.exerciseTimings ?? (isCurrent ? state.sessionExerciseTimings : undefined);
+  const hasTimings = timingsToStore && Object.keys(timingsToStore).length > 0;
   state = { ...state, completedWorkouts: [...state.completedWorkouts, {
     id: payload.workoutId, finishedAt: payload.finishedAt, participants: payload.participants,
     startedAt, durationSeconds, title: state.workoutEdits[payload.workoutId] ?? payload.title ?? (isCurrent ? state.sessionTitle : undefined),
+    ...(derivedMachineIds.length ? { machineIds: derivedMachineIds } : {}),
+    ...(hasTimings ? { exerciseTimings: timingsToStore } : {}),
   }] };
   refreshProgress();
 }
@@ -569,18 +589,50 @@ function applySetChange(setId: string, replacement: WorkoutSetLog | null) {
   const old = state.sets.find((set) => set.id === setId);
   if (!old) return;
   const sets = state.sets.flatMap((set) => set.id === setId ? (replacement ? [{ ...set, weight: replacement.weight, reps: replacement.reps }] : []) : [set]);
-  updateState(recalculateSetRecords(sets, [old]));
+  const updatedWorkouts = replacement === null && state.completedWorkouts.some((w) => w.id === old.workoutId)
+    ? state.completedWorkouts.map((w) => {
+        if (w.id !== old.workoutId) return w;
+        const remainingForWorkout = sets.filter((s) => s.workoutId === w.id);
+        const participants = remainingForWorkout.length
+          ? ([...new Set(remainingForWorkout.map((s) => s.userId))] as PartnerId[])
+          : w.participants;
+        return { ...w, participants };
+      })
+    : state.completedWorkouts;
+  updateState({ ...recalculateSetRecords(sets, [old]), completedWorkouts: updatedWorkouts });
 }
 
-function applyWorkoutChange(workoutId: string, title: string | null) {
+function applyWorkoutChange(
+  workoutId: string,
+  change: string | null | { title?: string | null; machineIds?: string[]; participants?: PartnerId[] },
+) {
   // Keep deletions so delayed completions and set uploads cannot restore a removed session.
   if (state.workoutEdits[workoutId] === null) return;
-  const removed = title === null ? state.sets.filter((set) => set.workoutId === workoutId) : [];
+  const title = typeof change === 'object' && change !== null ? change.title : change;
+  const machineIds = typeof change === 'object' && change !== null ? change.machineIds : undefined;
+  const participants = typeof change === 'object' && change !== null ? change.participants : undefined;
+
+  if (title === null) {
+    const removed = state.sets.filter((set) => set.workoutId === workoutId);
+    updateState({
+      workoutEdits: { ...state.workoutEdits, [workoutId]: null },
+      completedWorkouts: state.completedWorkouts.filter((workout) => workout.id !== workoutId),
+      ...recalculateSetRecords(state.sets.filter((set) => set.workoutId !== workoutId), removed),
+    });
+    return;
+  }
+
   updateState({
-    workoutEdits: { ...state.workoutEdits, [workoutId]: title },
-    completedWorkouts: title === null ? state.completedWorkouts.filter((workout) => workout.id !== workoutId)
-      : state.completedWorkouts.map((workout) => workout.id === workoutId ? { ...workout, title } : workout),
-    ...(title === null ? recalculateSetRecords(state.sets.filter((set) => set.workoutId !== workoutId), removed) : {}),
+    ...(title !== undefined ? { workoutEdits: { ...state.workoutEdits, [workoutId]: title } } : {}),
+    completedWorkouts: state.completedWorkouts.map((workout) => {
+      if (workout.id !== workoutId) return workout;
+      return {
+        ...workout,
+        ...(title !== undefined ? { title } : {}),
+        ...(machineIds !== undefined ? { machineIds } : {}),
+        ...(participants !== undefined ? { participants } : {}),
+      };
+    }),
   });
 }
 
@@ -594,6 +646,7 @@ function broadcastOwnStatus(extra: Partial<PartnerLiveStatus> = {}) {
     restSecondsRemaining: state.restSeconds, restEndsAt: state.restEndsAt || undefined,
     isSessionActive: state.isSessionActive, sessionStartedAt: state.sessionStartedAt,
     sessionMachineIds: state.sessionMachineIds,
+    exerciseTimings: state.sessionExerciseTimings,
     lastUpdated: new Date().toISOString(),
     ...extra,
   } } });
@@ -676,6 +729,8 @@ async function persistState() {
       sessionStartedAt: state.sessionStartedAt,
       sessionTitle: state.sessionTitle,
       sessionMachineIds: state.sessionMachineIds,
+      sessionExerciseTimings: state.sessionExerciseTimings,
+      currentSetStartedAt: state.currentSetStartedAt,
       selectedMachineId: state.selectedMachineId,
       restEndsAt: state.restEndsAt,
       restDurationSeconds: state.restDurationSeconds,
@@ -738,6 +793,8 @@ async function loadPersistedState() {
         sessionStartedAt: typeof parsed.sessionStartedAt === 'number' ? parsed.sessionStartedAt : null,
         sessionTitle: typeof parsed.sessionTitle === 'string' ? parsed.sessionTitle : state.sessionTitle,
         sessionMachineIds: Array.isArray(parsed.sessionMachineIds) ? parsed.sessionMachineIds : state.sessionMachineIds,
+        sessionExerciseTimings: parsed.sessionExerciseTimings && typeof parsed.sessionExerciseTimings === 'object' ? parsed.sessionExerciseTimings : {},
+        currentSetStartedAt: typeof parsed.currentSetStartedAt === 'number' ? parsed.currentSetStartedAt : null,
         selectedMachineId: parsed.selectedMachineId ?? state.selectedMachineId,
         restEndsAt: typeof parsed.restEndsAt === 'number' ? parsed.restEndsAt : null,
         restDurationSeconds: typeof parsed.restDurationSeconds === 'number' ? parsed.restDurationSeconds : 90,
@@ -807,7 +864,12 @@ function tickTimers() {
     if (nextRest === 0) {
       triggerHaptic('success');
     }
-    state = { ...state, restSeconds: nextRest, restEndsAt: nextRest > 0 ? state.restEndsAt : null };
+    state = {
+      ...state,
+      restSeconds: nextRest,
+      restEndsAt: nextRest > 0 ? state.restEndsAt : null,
+      ...(nextRest === 0 ? { currentSetStartedAt: Date.now() } : {}),
+    };
     changed = true;
   }
 
@@ -863,7 +925,11 @@ syncEngine.onConnectionChange((isPartnerOnline, status) => {
 syncEngine.subscribe((event: SyncEvent, historical = false) => {
   switch (event.type) {
     case 'SESSION_CHANGED': {
-      applyWorkoutChange(event.payload.workoutId, event.payload.title?.trim() ?? null);
+      applyWorkoutChange(event.payload.workoutId, {
+        ...(event.payload.title !== undefined ? { title: event.payload.title === null ? null : event.payload.title.trim() } : {}),
+        ...(event.payload.machineIds !== undefined ? { machineIds: event.payload.machineIds } : {}),
+        ...(event.payload.participants !== undefined ? { participants: event.payload.participants } : {}),
+      });
       break;
     }
     case 'MACHINE_DELETED': {
@@ -912,7 +978,8 @@ syncEngine.subscribe((event: SyncEvent, historical = false) => {
       });
 
       const isFromPartner = incomingSet.userId !== state.activeUser;
-      const nextPartnerStatus: PartnerLiveStatus = isFromPartner && !historical
+      const completedWorkout = state.completedWorkouts.find((w) => w.id === incomingSet.workoutId);
+      const nextPartnerStatus: PartnerLiveStatus = isFromPartner && !historical && !completedWorkout
         ? {
             ...state.partnerStatus,
             userId: incomingSet.userId,
@@ -932,7 +999,7 @@ syncEngine.subscribe((event: SyncEvent, historical = false) => {
       const nextProfiles = state.profiles;
 
       let latestReaction = state.latestReaction;
-      if (isFromPartner && !historical) {
+      if (isFromPartner && !historical && !completedWorkout) {
         const partnerName = state.profiles[incomingSet.userId]?.name || 'Partner';
         latestReaction = {
           id: `set_alert_${incomingSet.id}`,
@@ -948,14 +1015,25 @@ syncEngine.subscribe((event: SyncEvent, historical = false) => {
         void notifyCompletedSet(incomingSet, partnerName, state.language);
       }
 
+      const nextCompletedWorkouts = completedWorkout
+        ? state.completedWorkouts.map((w) => {
+            if (w.id !== completedWorkout.id) return w;
+            const machineIds = [...new Set([...(w.machineIds ?? []), incomingSet.machineId])];
+            const participants = [...new Set([...w.participants, incomingSet.userId])] as PartnerId[];
+            return { ...w, machineIds, participants };
+          })
+        : state.completedWorkouts;
+
       state = {
         ...state,
         sets: nextSets,
         machines: nextMachines,
+        completedWorkouts: nextCompletedWorkouts,
         partnerStatus: nextPartnerStatus,
         profiles: nextProfiles,
         latestReaction,
       };
+      if (completedWorkout) refreshProgress();
       notify();
       persistState();
       break;
@@ -1017,7 +1095,7 @@ syncEngine.subscribe((event: SyncEvent, historical = false) => {
         sessionStartedAt: effectiveStart,
         sessionElapsedSeconds: Math.max(0, Math.floor((Date.now() - effectiveStart) / 1000)),
         // The clock is shared; the exercises are each person's own.
-        ...(fromPartner && !wasActive ? { sessionTitle: '', sessionMachineIds: [] } : {}),
+        ...(fromPartner && !wasActive ? { sessionTitle: '', sessionMachineIds: [], sessionExerciseTimings: {}, currentSetStartedAt: Date.now() } : {}),
         ...(fromPartner ? { partnerStatus: {
           ...state.partnerStatus,
           isOnline: true,
@@ -1061,6 +1139,9 @@ syncEngine.subscribe((event: SyncEvent, historical = false) => {
         isSessionActive: false,
         sessionStartedAt: null,
         sessionElapsedSeconds: 0,
+        sessionMachineIds: [],
+        sessionExerciseTimings: {},
+        currentSetStartedAt: null,
         restSeconds: 0,
         restEndsAt: null,
       };
@@ -1095,9 +1176,21 @@ syncEngine.subscribe((event: SyncEvent, historical = false) => {
           personalRecordWeight: Math.max(incomingMachine.partnerSetups[user].personalRecordWeight, ...sets.map(weight)),
         };
       }
+      const exists = state.machines.some((m) => m.id === incomingMachine.id);
+      const nextMachines = exists
+        ? state.machines.map((m) => (m.id === incomingMachine.id ? incomingMachine : m))
+        : [incomingMachine, ...state.machines];
+      const nextSets = exists
+        ? state.sets.map((s) =>
+            s.machineId === incomingMachine.id
+              ? { ...s, machineName: incomingMachine.name || incomingMachine.nameZh || s.machineName }
+              : s
+          )
+        : state.sets;
       state = {
         ...state,
-        machines: [incomingMachine, ...state.machines.filter((m) => m.id !== incomingMachine.id)],
+        machines: nextMachines,
+        sets: nextSets,
       };
       notify();
       persistState();
@@ -1188,26 +1281,26 @@ export function useGymCrushStore() {
 
   const startSession = (machineIds?: string[], title?: string) => {
     triggerHaptic('medium');
-    const defaultIds =
-      state.machines.map((m) => m.id);
     const validIds =
-      (Array.isArray(machineIds) ? machineIds : defaultIds)
+      (Array.isArray(machineIds) ? machineIds : [])
         .filter((id) => state.machines.some((m) => m.id === id));
     const firstMachineId =
       validIds[0] || null;
-    const firstMachine =
-      state.machines.find((m) => m.id === firstMachineId) || null;
     const nextTitle =
       title || (state.language === 'zh-TW' ? '訓練進行中' : 'Workout Session');
 
-    const startedAt =
-      state.isSessionActive && state.sessionStartedAt
-        ? state.sessionStartedAt
-        : nextSessionStart();
-    const elapsedSeconds =
-      state.isSessionActive && state.sessionStartedAt
-        ? Math.max(0, Math.floor((Date.now() - state.sessionStartedAt) / 1000))
-        : 0;
+    const wasActive = state.isSessionActive && !!state.sessionStartedAt;
+    const startedAt = wasActive
+      ? state.sessionStartedAt!
+      : nextSessionStart();
+    const elapsedSeconds = wasActive
+      ? Math.max(0, Math.floor((Date.now() - state.sessionStartedAt!) / 1000))
+      : 0;
+    const nowIso = new Date().toISOString();
+    const baseTimings = wasActive ? { ...state.sessionExerciseTimings } : {};
+    if (firstMachineId && !baseTimings[firstMachineId]) {
+      baseTimings[firstMachineId] = { machineId: firstMachineId, startedAt: wasActive ? nowIso : new Date(startedAt).toISOString() };
+    }
 
     updateState({
       isSessionActive: true,
@@ -1215,6 +1308,8 @@ export function useGymCrushStore() {
       sessionElapsedSeconds: elapsedSeconds,
       sessionTitle: nextTitle,
       sessionMachineIds: validIds,
+      sessionExerciseTimings: baseTimings,
+      currentSetStartedAt: wasActive ? (state.currentSetStartedAt ?? Date.now()) : Date.now(),
       selectedMachineId: firstMachineId,
     });
 
@@ -1239,7 +1334,9 @@ export function useGymCrushStore() {
     const finishedAt = new Date().toISOString();
     const startedAt = new Date(state.sessionStartedAt).toISOString();
     const title = state.sessionTitle;
-    recordCompletedWorkout({ workoutId, finishedAt, participants, startedAt, title });
+    const machineIds = [...state.sessionMachineIds];
+    const exerciseTimings = { ...state.sessionExerciseTimings };
+    recordCompletedWorkout({ workoutId, finishedAt, participants, startedAt, title, machineIds, exerciseTimings });
     triggerHaptic('success');
     const durationSeconds = Math.max(0, Math.floor((Date.parse(finishedAt) - Date.parse(startedAt)) / 1000));
     const finishedBy = state.activeUser;
@@ -1249,6 +1346,9 @@ export function useGymCrushStore() {
       isSessionActive: false,
       sessionStartedAt: null,
       sessionElapsedSeconds: 0,
+      sessionMachineIds: [],
+      sessionExerciseTimings: {},
+      currentSetStartedAt: null,
       restSeconds: 0,
       restEndsAt: null,
       partnerStatus: {
@@ -1270,6 +1370,8 @@ export function useGymCrushStore() {
         workoutId,
         finishedAt,
         participants,
+        ...(machineIds.length ? { machineIds } : {}),
+        ...(Object.keys(exerciseTimings).length ? { exerciseTimings } : {}),
       },
     });
   };
@@ -1280,12 +1382,20 @@ export function useGymCrushStore() {
     const nextSessionIds = exists
       ? state.sessionMachineIds
       : [...state.sessionMachineIds, machineId];
-    const startedAt = state.sessionStartedAt ?? Date.now();
+    const startedAt = state.sessionStartedAt ?? nextSessionStart();
+    const workoutId = `w_${startedAt}`;
+    const hasSets = state.sets.some((s) => s.workoutId === workoutId && s.machineId === machineId);
+    const nowMs = Date.now();
+    const nextTimings = !state.sessionExerciseTimings[machineId] || !hasSets
+      ? { ...state.sessionExerciseTimings, [machineId]: { machineId, startedAt: new Date(nowMs).toISOString() } }
+      : state.sessionExerciseTimings;
 
     updateState({
       isSessionActive: true,
       sessionStartedAt: startedAt,
       sessionMachineIds: nextSessionIds,
+      sessionExerciseTimings: nextTimings,
+      currentSetStartedAt: nowMs,
       selectedMachineId: machineId,
     });
 
@@ -1329,6 +1439,17 @@ export function useGymCrushStore() {
   };
 
   const setSelectedMachineId = (machineId: string | null) => {
+    if (machineId && state.isSessionActive && state.sessionStartedAt && machineId !== state.selectedMachineId) {
+      const workoutId = `w_${state.sessionStartedAt}`;
+      const hasSetsForMachine = state.sets.some((s) => s.workoutId === workoutId && s.machineId === machineId);
+      const nowMs = Date.now();
+      const nextTimings = !state.sessionExerciseTimings[machineId] || !hasSetsForMachine
+        ? { ...state.sessionExerciseTimings, [machineId]: { machineId, startedAt: new Date(nowMs).toISOString() } }
+        : state.sessionExerciseTimings;
+      updateState({ selectedMachineId: machineId, sessionExerciseTimings: nextTimings, currentSetStartedAt: nowMs });
+      broadcastOwnStatus();
+      return;
+    }
     updateState({ selectedMachineId: machineId });
     if (machineId) broadcastOwnStatus();
   };
@@ -1340,7 +1461,12 @@ export function useGymCrushStore() {
 
   const startRest = (seconds: number) => {
     const duration = Number.isFinite(seconds) ? Math.max(0, Math.round(seconds)) : 0;
-    updateState({ restSeconds: duration, restDurationSeconds: duration, restEndsAt: duration ? Date.now() + duration * 1000 : null });
+    updateState({
+      restSeconds: duration,
+      restDurationSeconds: duration,
+      restEndsAt: duration ? Date.now() + duration * 1000 : null,
+      ...(duration === 0 ? { currentSetStartedAt: Date.now() } : {}),
+    });
     broadcastOwnStatus();
   };
   const cancelRest = () => startRest(0);
@@ -1463,6 +1589,53 @@ export function useGymCrushStore() {
     void syncEngine.broadcast({ type: 'MACHINE_ADDED', payload: { machine: updated } });
   };
 
+  const updateMachine = (
+    machineId: string,
+    patch: {
+      name?: string;
+      nameZh?: string;
+      muscleGroup?: MuscleGroup;
+      workoutSplits?: WorkoutSplitId[];
+      locationNote?: string;
+      locationNoteZh?: string;
+      photoUri?: string;
+    },
+  ) => {
+    const machine = state.machines.find((item) => item.id === machineId);
+    if (!machine) return;
+    const nextName = patch.name !== undefined ? patch.name.trim() : machine.name;
+    const nextNameZh = patch.nameZh !== undefined ? (patch.nameZh.trim() || undefined) : machine.nameZh;
+    if (!nextName && !nextNameZh) return;
+    const nextMuscleGroup = patch.muscleGroup ?? machine.muscleGroup;
+    const nextSplits = patch.workoutSplits
+      ?? (patch.muscleGroup !== undefined && patch.muscleGroup !== machine.muscleGroup
+        ? inferSplitsForMuscle(nextMuscleGroup)
+        : machine.workoutSplits);
+    const nextLocationNote = patch.locationNote !== undefined ? (patch.locationNote.trim() || undefined) : machine.locationNote;
+    const nextLocationNoteZh = patch.locationNoteZh !== undefined ? (patch.locationNoteZh.trim() || undefined) : machine.locationNoteZh;
+    const nextPhotoUri = patch.photoUri !== undefined && patch.photoUri.trim() ? patch.photoUri.trim() : machine.photoUri;
+
+    const updated: GymMachine = {
+      ...machine,
+      name: nextName,
+      nameZh: nextNameZh,
+      muscleGroup: nextMuscleGroup,
+      workoutSplits: nextSplits,
+      locationNote: nextLocationNote,
+      locationNoteZh: nextLocationNoteZh,
+      photoUri: nextPhotoUri,
+    };
+
+    const nextDisplayName = updated.name || updated.nameZh || 'Workout Machine';
+    const nextSets = state.sets.map((s) => (s.machineId === machineId ? { ...s, machineName: nextDisplayName } : s));
+
+    updateState({
+      machines: state.machines.map((item) => (item.id === machineId ? updated : item)),
+      sets: nextSets,
+    });
+    void syncEngine.broadcast({ type: 'MACHINE_ADDED', payload: { machine: updated } });
+  };
+
   const addMachine = (newMachineData: {
     name: string;
     nameZh?: string;
@@ -1581,14 +1754,19 @@ export function useGymCrushStore() {
     };
 
     const nextMachines = [newMachine, ...state.machines];
-    const nextSessionIds = state.sessionMachineIds.includes(newMachine.id)
-      ? state.sessionMachineIds
-      : [...state.sessionMachineIds, newMachine.id];
+    const nextSessionIds = state.isSessionActive && !state.sessionMachineIds.includes(newMachine.id)
+      ? [...state.sessionMachineIds, newMachine.id]
+      : state.sessionMachineIds;
+    const nowMs = Date.now();
+    const nextTimings = state.isSessionActive
+      ? { ...state.sessionExerciseTimings, [newMachine.id]: { machineId: newMachine.id, startedAt: new Date(nowMs).toISOString() } }
+      : state.sessionExerciseTimings;
 
     updateState({
       machines: nextMachines,
       selectedMachineId: newMachine.id,
       sessionMachineIds: nextSessionIds,
+      ...(state.isSessionActive ? { sessionExerciseTimings: nextTimings, currentSetStartedAt: nowMs } : {}),
     });
 
     void syncEngine.broadcast({
@@ -1625,9 +1803,33 @@ export function useGymCrushStore() {
     const setNumber = Math.max(0, ...currentSetsForMachine.map((set) => set.setNumber)) + 1;
 
     const userProfile = state.profiles[activeUserId];
+    const nowMs = Date.now();
+    const nowIso = new Date(nowMs).toISOString();
+    const currentTiming = state.sessionExerciseTimings[currentMachine.id];
+    const exerciseStartedAt =
+      currentTiming?.startedAt ||
+      new Date(
+        state.currentSetStartedAt && state.currentSetStartedAt <= nowMs
+          ? state.currentSetStartedAt
+          : startedAt
+      ).toISOString();
+
+    let setStartedMs = nowMs;
+    if (currentSetsForMachine.length === 0) {
+      setStartedMs =
+        state.currentSetStartedAt && state.currentSetStartedAt <= nowMs
+          ? Math.min(nowMs, state.currentSetStartedAt)
+          : Date.parse(exerciseStartedAt);
+    } else {
+      const prevSetMs = Math.max(...currentSetsForMachine.map((s) => Date.parse(s.loggedAt)));
+      if (state.currentSetStartedAt && state.currentSetStartedAt <= nowMs && state.currentSetStartedAt >= prevSetMs) {
+        setStartedMs = state.currentSetStartedAt;
+      }
+    }
+    const setStartedAtIso = new Date(Math.min(nowMs, setStartedMs)).toISOString();
 
     const newSet: WorkoutSetLog = {
-      id: `set_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+      id: `set_${nowMs}_${Math.random().toString(36).slice(2, 6)}`,
       workoutId,
       machineId: currentMachine?.id || 'm-custom',
       machineName: currentMachine?.name || currentMachine?.nameZh || 'Workout Machine',
@@ -1637,7 +1839,9 @@ export function useGymCrushStore() {
       reps: safeReps,
       unit: userProfile?.unit || 'kg',
       isPR,
-      loggedAt: new Date().toISOString(),
+      loggedAt: nowIso,
+      startedAt: setStartedAtIso,
+      exerciseStartedAt,
     };
 
     triggerHaptic(isPR ? 'success' : 'medium');
@@ -1684,16 +1888,26 @@ export function useGymCrushStore() {
     const nextSessionMachineIds = state.sessionMachineIds.includes(newSet.machineId)
       ? state.sessionMachineIds
       : [...state.sessionMachineIds, newSet.machineId];
+    const nextTimings: Record<string, ExerciseTiming> = {
+      ...state.sessionExerciseTimings,
+      [currentMachine.id]: {
+        machineId: currentMachine.id,
+        startedAt: exerciseStartedAt,
+        endedAt: nowIso,
+      },
+    };
 
     updateState({
       isSessionActive: true,
       sessionStartedAt: startedAt,
       sessionMachineIds: nextSessionMachineIds,
+      sessionExerciseTimings: nextTimings,
+      currentSetStartedAt: nowMs + nextRestSeconds * 1000,
       sets: nextSets,
       machines: nextMachines,
       restDurationSeconds: nextRestSeconds,
       restSeconds: nextRestSeconds,
-      restEndsAt: Date.now() + nextRestSeconds * 1000,
+      restEndsAt: nowMs + nextRestSeconds * 1000,
       latestReaction,
     });
 
@@ -1960,7 +2174,9 @@ export function useGymCrushStore() {
         machines: INITIAL_MACHINES,
         sets: INITIAL_SETS,
         selectedMachineId: 'm-chest-press',
-        sessionMachineIds: ['m-chest-press', 'm-lat-pulldown'],
+        sessionMachineIds: [],
+        sessionExerciseTimings: {},
+        currentSetStartedAt: null,
         isSessionActive: false,
         sessionStartedAt: null,
         sessionElapsedSeconds: 0,
@@ -1992,6 +2208,7 @@ export function useGymCrushStore() {
     sessionElapsedSeconds: currentState.sessionElapsedSeconds,
     sessionTitle: currentState.sessionTitle,
     sessionMachineIds: currentState.sessionMachineIds,
+    sessionExerciseTimings: currentState.sessionExerciseTimings,
     profiles: currentState.profiles,
     machines: currentState.machines,
     sets: currentState.sets,
@@ -2043,6 +2260,7 @@ export function useGymCrushStore() {
     setSessionAlarm,
     updatePartnerSetup,
     addMachine,
+    updateMachine,
     updateMachineNames,
     updateMachinePhoto: (id: string, photoUri: string) => {
       const machine = state.machines.find((item) => item.id === id);
@@ -2066,7 +2284,8 @@ export function useGymCrushStore() {
     deleteQuickRoutine: (id: string) => updateState({ quickRoutines: state.quickRoutines.filter((item) => item.id !== id) }),
     changeSet: (setId: string, values: { weight: number; reps: number } | null) => {
       const old = state.sets.find((set) => set.id === setId);
-      if (!old || old.userId !== state.activeUser) return;
+      const inCompletedWorkout = old ? state.completedWorkouts.some((w) => w.id === old.workoutId) : false;
+      if (!old || (old.userId !== state.activeUser && !inCompletedWorkout)) return;
       if (values && (!Number.isFinite(values.weight) || values.weight < 0 || !Number.isSafeInteger(values.reps) || values.reps < 1)) return;
       const set = values ? { ...old, ...values, isPR: false } : null;
       applySetChange(setId, set);
@@ -2078,6 +2297,86 @@ export function useGymCrushStore() {
       const nextTitle = title?.trim() ?? null;
       applyWorkoutChange(workoutId, nextTitle);
       void syncEngine.broadcast({ type: 'SESSION_CHANGED', payload: { workoutId, title: nextTitle } });
+    },
+    addExerciseToWorkout: (workoutId: string, machineId: string) => {
+      const workout = state.completedWorkouts.find((w) => w.id === workoutId);
+      const machine = state.machines.find((m) => m.id === machineId);
+      if (!workout || !machine) return;
+      const existingIds = workout.machineIds ?? [...new Set(state.sets.filter((s) => s.workoutId === workoutId).map((s) => s.machineId))];
+      if (existingIds.includes(machineId)) return;
+      const nextMachineIds = [...existingIds, machineId];
+      applyWorkoutChange(workoutId, { machineIds: nextMachineIds });
+      void syncEngine.broadcast({ type: 'SESSION_CHANGED', payload: { workoutId, machineIds: nextMachineIds } });
+    },
+    removeExerciseFromWorkout: (workoutId: string, machineId: string) => {
+      const workout = state.completedWorkouts.find((w) => w.id === workoutId);
+      if (!workout) return;
+      const removedSets = state.sets.filter((s) => s.workoutId === workoutId && s.machineId === machineId);
+      const remainingSets = state.sets.filter((s) => !(s.workoutId === workoutId && s.machineId === machineId));
+      const remainingForWorkout = remainingSets.filter((s) => s.workoutId === workoutId);
+      const existingIds = workout.machineIds ?? [...new Set(state.sets.filter((s) => s.workoutId === workoutId).map((s) => s.machineId))];
+      const nextMachineIds = existingIds.filter((id) => id !== machineId);
+      const nextParticipants = remainingForWorkout.length > 0
+        ? ([...new Set(remainingForWorkout.map((s) => s.userId))] as PartnerId[])
+        : workout.participants;
+      const nextTimings = workout.exerciseTimings
+        ? Object.fromEntries(Object.entries(workout.exerciseTimings).filter(([k]) => k !== machineId))
+        : undefined;
+      const recalculated = recalculateSetRecords(remainingSets, removedSets);
+      const nextWorkouts = state.completedWorkouts.map((w) =>
+        w.id === workoutId
+          ? {
+              ...w,
+              machineIds: nextMachineIds,
+              participants: nextParticipants,
+              exerciseTimings: nextTimings && Object.keys(nextTimings).length ? nextTimings : undefined,
+            }
+          : w
+      );
+      updateState({ ...recalculated, completedWorkouts: nextWorkouts });
+      for (const s of removedSets) {
+        void syncEngine.broadcast({ type: 'SET_CHANGED', payload: { setId: s.id, set: null } });
+      }
+      void syncEngine.broadcast({ type: 'SESSION_CHANGED', payload: { workoutId, machineIds: nextMachineIds, participants: nextParticipants } });
+    },
+    addSetToWorkout: (workoutId: string, machineId: string, userId: PartnerId, weight: number, reps: number): WorkoutSetLog | null => {
+      const workout = state.completedWorkouts.find((w) => w.id === workoutId);
+      const machine = state.machines.find((m) => m.id === machineId);
+      if (!workout || !machine) return null;
+      if (!Number.isFinite(weight) || weight < 0 || !Number.isSafeInteger(reps) || reps < 1) return null;
+      const safeWeight = Number(weight.toFixed(2));
+      const existingMachineSets = state.sets.filter((s) => s.workoutId === workoutId && s.machineId === machineId);
+      const userMachineSets = existingMachineSets.filter((s) => s.userId === userId);
+      const setNumber = Math.max(0, ...userMachineSets.map((s) => s.setNumber)) + 1;
+      const baseMs = existingMachineSets.length > 0
+        ? Math.max(...existingMachineSets.map((s) => Date.parse(s.loggedAt))) + 90000
+        : Date.parse(workout.finishedAt);
+      const loggedAt = new Date(Number.isFinite(baseMs) ? baseMs : Date.now()).toISOString();
+
+      const rawSet: WorkoutSetLog = {
+        id: `set_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+        workoutId,
+        machineId: machine.id,
+        machineName: machine.name || machine.nameZh || 'Workout Machine',
+        userId,
+        setNumber,
+        weight: safeWeight,
+        reps,
+        unit: state.profiles[userId].unit,
+        isPR: false,
+        loggedAt,
+      };
+      const recalculated = recalculateSetRecords([rawSet, ...state.sets], [rawSet]);
+      const finalSet = recalculated.sets.find((s) => s.id === rawSet.id) ?? rawSet;
+      const nextMachineIds = [...new Set([...(workout.machineIds ?? state.sets.filter((s) => s.workoutId === workoutId).map((s) => s.machineId)), machineId])];
+      const nextParticipants = [...new Set([...workout.participants, userId])] as PartnerId[];
+      const nextWorkouts = state.completedWorkouts.map((w) =>
+        w.id === workoutId ? { ...w, machineIds: nextMachineIds, participants: nextParticipants } : w
+      );
+      updateState({ ...recalculated, completedWorkouts: nextWorkouts });
+      void syncEngine.broadcast({ type: 'SET_LOGGED', payload: { set: finalSet } });
+      void syncEngine.broadcast({ type: 'SESSION_CHANGED', payload: { workoutId, machineIds: nextMachineIds, participants: nextParticipants } });
+      return finalSet;
     },
     logSet,
     sendReaction,
